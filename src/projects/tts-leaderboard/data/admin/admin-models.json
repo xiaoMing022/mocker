@@ -1,0 +1,22 @@
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "items": [
+      {
+        "id": "mock-model-001",
+        "name": "Mock Mandarin Pro",
+        "provider": "Mock Provider",
+        "status": "active",
+        "score": 87.4
+      },
+      {
+        "id": "mock-model-002",
+        "name": "Mock Expressive Voice",
+        "provider": "Mock Provider",
+        "status": "draft",
+        "score": 83.1
+      }
+    ]
+  }
+}

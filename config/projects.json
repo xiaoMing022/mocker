@@ -1,0 +1,13 @@
+{
+  "adminPort": 4000,
+  "projects": {
+    "tts-leaderboard": {
+      "enabled": true,
+      "port": 4001,
+      "proxy": {
+        "enabled": false,
+        "target": ""
+      }
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "items": [
+      {
+        "rank": 1,
+        "modelId": "mock-model-001",
+        "winRate": 0.68,
+        "votes": 742
+      },
+      {
+        "rank": 2,
+        "modelId": "mock-model-002",
+        "winRate": 0.61,
+        "votes": 544
+      }
+    ]
+  }
+}

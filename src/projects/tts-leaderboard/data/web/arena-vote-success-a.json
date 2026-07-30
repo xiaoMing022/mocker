@@ -1,0 +1,19 @@
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "yourChoice": "A",
+    "modelA": {
+      "displayName": "Mock Voice Mandarin Pro",
+      "provider": "Google",
+      "iconUrl": "/images/creators/google.svg",
+      "websiteUrl": "https://example.com/google"
+    },
+    "modelB": {
+      "displayName": "Mock Neural TTS Studio",
+      "provider": "ElevenLabs",
+      "iconUrl": "/images/creators/elevenlabs.svg",
+      "websiteUrl": "https://example.com/elevenlabs"
+    }
+  }
+}

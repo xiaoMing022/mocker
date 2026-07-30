@@ -1,0 +1,10 @@
+{
+  "code": 200,
+  "message": "success",
+  "data": {
+    "modelCount": 18,
+    "pendingSamples": 42,
+    "completedVotes": 1286,
+    "activeBattles": 6
+  }
+}
