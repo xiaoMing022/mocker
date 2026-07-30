@@ -1,0 +1,34 @@
+{
+  "routes": [
+    {
+      "id": "b87ba0e4-f0bd-4618-b085-7695858f319d",
+      "name": "demo",
+      "method": "GET",
+      "path": "/api/demo",
+      "enabled": true,
+      "statusCode": 200,
+      "delayMs": 0,
+      "response": {
+        "hello": "console"
+      },
+      "headers": {}
+    },
+    {
+      "id": "2acad42b-f634-41c2-967d-902615e6c983",
+      "name": "lb-override",
+      "method": "GET",
+      "path": "/api/v1/leaderboard",
+      "enabled": true,
+      "statusCode": 200,
+      "delayMs": 0,
+      "response": {
+        "code": 200,
+        "message": "from-console",
+        "data": {
+          "items": []
+        }
+      },
+      "headers": {}
+    }
+  ]
+}

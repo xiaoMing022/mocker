@@ -18,6 +18,7 @@ export function registerAdminRoutes(app, { manager }) {
         port: p.port,
         enabled: p.enabled,
         url: p.url,
+        routeCount: p.routeCount,
       })),
     })
   })
@@ -44,13 +45,7 @@ export function registerAdminRoutes(app, { manager }) {
       const project = await manager.updateProject(req.params.slug, req.body ?? {})
       res.json({ project })
     } catch (error) {
-      const status = error.statusCode ?? 500
-      res.status(status).json({
-        code: status,
-        message: error.message,
-        errors: error.errors ?? undefined,
-        data: null,
-      })
+      sendError(res, error)
     }
   })
 
@@ -59,12 +54,83 @@ export function registerAdminRoutes(app, { manager }) {
       const project = await manager.reloadProject(req.params.slug)
       res.json({ project })
     } catch (error) {
-      const status = error.statusCode ?? 500
-      res.status(status).json({
-        code: status,
-        message: error.message,
-        data: null,
-      })
+      sendError(res, error)
     }
+  })
+
+  // ── Dynamic routes ──────────────────────────────────────────
+
+  app.get("/__mock/projects/:slug/routes", (req, res) => {
+    try {
+      res.json({ routes: manager.listRoutes(req.params.slug) })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
+  app.put("/__mock/projects/:slug/routes", (req, res) => {
+    try {
+      const routes = manager.replaceRoutes(req.params.slug, req.body?.routes ?? req.body)
+      res.json({ routes })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
+  app.post("/__mock/projects/:slug/routes", (req, res) => {
+    try {
+      const route = manager.createRoute(req.params.slug, req.body ?? {})
+      res.status(201).json({ route })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
+  app.patch("/__mock/projects/:slug/routes/:id", (req, res) => {
+    try {
+      const route = manager.updateRoute(req.params.slug, req.params.id, req.body ?? {})
+      res.json({ route })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
+  app.delete("/__mock/projects/:slug/routes/:id", (req, res) => {
+    try {
+      manager.deleteRoute(req.params.slug, req.params.id)
+      res.json({ ok: true })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
+  // ── Request logs ────────────────────────────────────────────
+
+  app.get("/__mock/projects/:slug/logs", (req, res) => {
+    try {
+      const limit = Number(req.query.limit ?? 50)
+      res.json({ logs: manager.listLogs(req.params.slug, limit) })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
+  app.delete("/__mock/projects/:slug/logs", (req, res) => {
+    try {
+      manager.clearLogs(req.params.slug)
+      res.json({ ok: true })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+}
+
+function sendError(res, error) {
+  const status = error.statusCode ?? 500
+  res.status(status).json({
+    code: status,
+    message: error.message,
+    errors: error.errors ?? undefined,
+    data: null,
   })
 }

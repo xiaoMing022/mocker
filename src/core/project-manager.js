@@ -1,5 +1,13 @@
 import { isProxyActive, loadConfig, saveConfig, validateProjectPatch } from "./config-store.js"
 import { createProjectApp } from "./create-project-app.js"
+import { createRequestLogStore } from "./request-log.js"
+import {
+  applyRoutePatch,
+  createRouteId,
+  loadRoutes,
+  saveRoutes,
+  validateRoutesPayload,
+} from "./route-store.js"
 
 /**
  * @param {{
@@ -16,6 +24,11 @@ export function createProjectManager({ codeProjects }) {
   /** @type {import("./config-store.js").AppConfig} */
   let config = loadConfig(codeProjects)
 
+  /** @type {Map<string, import("./route-store.js").DynamicRoute[]>} */
+  const routesBySlug = new Map()
+
+  const requestLogs = createRequestLogStore({ maxPerProject: 200 })
+
   /** @type {Map<string, { server: import("node:http").Server | null, status: string, lastError: string | null, warning: string | null }>} */
   const runtime = new Map()
 
@@ -26,10 +39,17 @@ export function createProjectManager({ codeProjects }) {
       lastError: null,
       warning: null,
     })
+    routesBySlug.set(project.slug, loadRoutes(project.slug))
   }
 
   function getCodeProject(slug) {
     return codeProjects.find((p) => p.slug === slug)
+  }
+
+  function ensureKnown(slug) {
+    if (!getCodeProject(slug)) {
+      throw Object.assign(new Error(`Unknown project: ${slug}`), { statusCode: 404 })
+    }
   }
 
   function buildView(slug) {
@@ -49,6 +69,8 @@ export function createProjectManager({ codeProjects }) {
           : "proxy enabled but target is empty; forwarding is off")
     }
 
+    const routes = routesBySlug.get(slug) || []
+
     return {
       slug: code.slug,
       name: code.name,
@@ -64,6 +86,8 @@ export function createProjectManager({ codeProjects }) {
       lastError: state.lastError,
       warning,
       url: state.status === "listening" ? `http://localhost:${rt.port}` : null,
+      routeCount: routes.length,
+      enabledRouteCount: routes.filter((r) => r.enabled).length,
     }
   }
 
@@ -77,7 +101,6 @@ export function createProjectManager({ codeProjects }) {
     if (server) {
       await new Promise((resolve) => {
         server.close(() => resolve())
-        // Force-close hang if keep-alive clients linger
         setTimeout(() => resolve(), 2000).unref?.()
       })
     }
@@ -115,7 +138,19 @@ export function createProjectManager({ codeProjects }) {
         : "proxy enabled but target is empty; forwarding is off"
     }
 
-    const app = createProjectApp({ project: code, runtime: rt })
+    // Refresh routes from memory map (already loaded / updated)
+    if (!routesBySlug.has(slug)) {
+      routesBySlug.set(slug, loadRoutes(slug))
+    }
+
+    const app = createProjectApp({
+      project: code,
+      runtime: rt,
+      getRoutes: () => routesBySlug.get(slug) || [],
+      onRequestLog: (entry) => {
+        requestLogs.append(slug, entry)
+      },
+    })
 
     await new Promise((resolve, reject) => {
       const server = app.listen(rt.port, () => {
@@ -137,7 +172,7 @@ export function createProjectManager({ codeProjects }) {
         reject(error)
       })
     }).catch(() => {
-      // status already set; do not throw out of startAll for single project failure
+      // status already set
     })
   }
 
@@ -152,23 +187,21 @@ export function createProjectManager({ codeProjects }) {
           warning: null,
         })
       }
+      routesBySlug.set(project.slug, loadRoutes(project.slug))
       await startProject(project.slug)
     }
   }
 
   async function reloadProject(slug) {
-    if (!getCodeProject(slug)) {
-      throw Object.assign(new Error(`Unknown project: ${slug}`), { statusCode: 404 })
-    }
-    // Re-read disk so external edits are respected
+    ensureKnown(slug)
     config = loadConfig(codeProjects)
+    routesBySlug.set(slug, loadRoutes(slug))
     await startProject(slug)
     return buildView(slug)
   }
 
   async function updateProject(slug, patch) {
     const knownSlugs = codeProjects.map((p) => p.slug)
-    // refresh from disk first
     config = loadConfig(codeProjects)
 
     const result = validateProjectPatch(slug, patch, config, knownSlugs)
@@ -189,6 +222,99 @@ export function createProjectManager({ codeProjects }) {
     saveConfig(config)
     await startProject(slug)
     return buildView(slug)
+  }
+
+  function listRoutes(slug) {
+    ensureKnown(slug)
+    return routesBySlug.get(slug) || loadRoutes(slug)
+  }
+
+  /**
+   * Hot-update dynamic routes without restarting when only routes change.
+   * getRoutes() reads from the Map, so swapping the array is enough.
+   * @param {string} slug
+   * @param {import("./route-store.js").DynamicRoute[]} routes
+   */
+  function setRoutesInMemory(slug, routes) {
+    routesBySlug.set(slug, routes)
+  }
+
+  function replaceRoutes(slug, routesInput) {
+    ensureKnown(slug)
+    const result = validateRoutesPayload(routesInput)
+    if (!result.ok) {
+      const error = new Error(result.errors.join("; "))
+      error.statusCode = 400
+      error.errors = result.errors
+      throw error
+    }
+    saveRoutes(slug, result.routes)
+    setRoutesInMemory(slug, result.routes)
+    return result.routes
+  }
+
+  function createRoute(slug, body) {
+    ensureKnown(slug)
+    const current = [...(routesBySlug.get(slug) || [])]
+    const withId = { ...body, id: body?.id || createRouteId() }
+    const result = validateRoutesPayload([...current, withId])
+    if (!result.ok) {
+      const error = new Error(result.errors.join("; "))
+      error.statusCode = 400
+      error.errors = result.errors
+      throw error
+    }
+    saveRoutes(slug, result.routes)
+    setRoutesInMemory(slug, result.routes)
+    const created = result.routes.find((r) => r.id === withId.id) || result.routes.at(-1)
+    return created
+  }
+
+  function updateRoute(slug, id, patch) {
+    ensureKnown(slug)
+    const current = routesBySlug.get(slug) || []
+    const idx = current.findIndex((r) => r.id === id)
+    if (idx < 0) {
+      throw Object.assign(new Error(`Route not found: ${id}`), { statusCode: 404 })
+    }
+    const nextRoute = applyRoutePatch(current[idx], patch)
+    if (!nextRoute) {
+      throw Object.assign(new Error("Invalid route patch"), { statusCode: 400 })
+    }
+    const next = current.map((r, i) => (i === idx ? nextRoute : r))
+    const result = validateRoutesPayload(next)
+    if (!result.ok) {
+      const error = new Error(result.errors.join("; "))
+      error.statusCode = 400
+      error.errors = result.errors
+      throw error
+    }
+    saveRoutes(slug, result.routes)
+    setRoutesInMemory(slug, result.routes)
+    return result.routes.find((r) => r.id === id)
+  }
+
+  function deleteRoute(slug, id) {
+    ensureKnown(slug)
+    const current = routesBySlug.get(slug) || []
+    const next = current.filter((r) => r.id !== id)
+    if (next.length === current.length) {
+      throw Object.assign(new Error(`Route not found: ${id}`), { statusCode: 404 })
+    }
+    saveRoutes(slug, next)
+    setRoutesInMemory(slug, next)
+    return { ok: true }
+  }
+
+  function listLogs(slug, limit) {
+    ensureKnown(slug)
+    return requestLogs.list(slug, limit)
+  }
+
+  function clearLogs(slug) {
+    ensureKnown(slug)
+    requestLogs.clear(slug)
+    return { ok: true }
   }
 
   function listProjects() {
@@ -217,5 +343,12 @@ export function createProjectManager({ codeProjects }) {
     updateProject,
     reloadProject,
     getConfig,
+    listRoutes,
+    replaceRoutes,
+    createRoute,
+    updateRoute,
+    deleteRoute,
+    listLogs,
+    clearLogs,
   }
 }

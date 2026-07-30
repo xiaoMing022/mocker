@@ -17,6 +17,7 @@ export function createProxyFallback({ slug, enabled, target }) {
             ? "proxy target is empty"
             : "proxy disabled"
 
+      res.locals.mockSource = "miss"
       res.status(404).json({
         code: 404,
         message: `No mock route for ${req.method} ${req.path} (${reason})`,
@@ -32,11 +33,9 @@ export function createProxyFallback({ slug, enabled, target }) {
   const proxy = createProxyMiddleware({
     target,
     changeOrigin: true,
-    // Express 5 / path-to-regexp v8 rejects bare "*" ; match any remaining path
     pathFilter: () => true,
     on: {
       proxyReq(proxyReq, req) {
-        // express.json() consumed the stream; re-send parsed body for JSON requests
         if (
           req.body !== undefined &&
           req.body !== null &&
@@ -54,8 +53,12 @@ export function createProxyFallback({ slug, enabled, target }) {
           }
         }
       },
+      proxyRes(proxyRes, req, res) {
+        res.locals.mockSource = "proxy"
+      },
       error(err, req, res) {
         if (res.headersSent) return
+        res.locals.mockSource = "proxy"
         res.status(502).json({
           code: 502,
           message: `Proxy error for project "${slug}": ${err.message}`,

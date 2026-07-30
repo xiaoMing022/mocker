@@ -3,32 +3,243 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Mock Server Console</title>
+    <title>Mock 工作台</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <header class="header">
-      <div>
-        <h1>Mock Server Console</h1>
-        <p class="subtitle">管理项目启停、端口与上游转发</p>
+    <div class="app">
+      <header class="topbar">
+        <div class="brand">
+          <span class="brand-mark">M</span>
+          <div>
+            <div class="brand-title">Mock 工作台</div>
+            <div class="brand-sub">多项目 · 接口配置 · 请求观测</div>
+          </div>
+        </div>
+        <div class="topbar-right">
+          <span id="health-pill" class="pill">检测中…</span>
+          <button type="button" id="refresh-btn" class="btn btn-ghost">刷新</button>
+        </div>
+      </header>
+
+      <div class="shell">
+        <aside class="sidebar">
+          <div class="sidebar-head">
+            <span>项目</span>
+            <span id="project-count" class="muted small">0</span>
+          </div>
+          <nav id="project-nav" class="project-nav" aria-label="项目列表">
+            <p class="muted pad">加载中…</p>
+          </nav>
+        </aside>
+
+        <main class="main">
+          <div id="empty-state" class="empty-state" hidden>
+            <h2>选择一个项目</h2>
+            <p class="muted">从左侧列表进入项目工作台，配置接口并查看请求日志。</p>
+          </div>
+
+          <div id="workspace" hidden>
+            <div class="workspace-head">
+              <div>
+                <h1 id="ws-title">—</h1>
+                <div class="ws-meta">
+                  <span id="ws-slug" class="mono muted"></span>
+                  <span id="ws-status" class="status-badge">—</span>
+                  <a id="ws-url" class="link" href="#" target="_blank" rel="noreferrer" hidden></a>
+                </div>
+                <p id="ws-desc" class="muted small"></p>
+              </div>
+              <div class="ws-actions">
+                <button type="button" id="btn-copy-url" class="btn btn-ghost" disabled>复制 Base URL</button>
+                <button type="button" id="btn-reload" class="btn btn-ghost">重载实例</button>
+              </div>
+            </div>
+
+            <div class="tabs" role="tablist">
+              <button type="button" class="tab active" data-tab="overview" role="tab">概览</button>
+              <button type="button" class="tab" data-tab="routes" role="tab">接口 Mock</button>
+              <button type="button" class="tab" data-tab="logs" role="tab">请求日志</button>
+            </div>
+
+            <div id="toast" class="toast" hidden></div>
+
+            <!-- Overview -->
+            <section id="panel-overview" class="panel" data-panel="overview">
+              <div class="card">
+                <h3>运行配置</h3>
+                <form id="overview-form" class="form-grid">
+                  <label class="check">
+                    <input type="checkbox" name="enabled" />
+                    启用项目
+                  </label>
+                  <div class="field">
+                    <label for="ov-port">监听端口</label>
+                    <input id="ov-port" name="port" type="number" min="1" max="65535" required />
+                  </div>
+                  <label class="check">
+                    <input type="checkbox" name="proxyEnabled" />
+                    开启上游转发
+                  </label>
+                  <div class="field full">
+                    <label for="ov-target">上游 URL</label>
+                    <input id="ov-target" name="target" type="url" placeholder="https://api.example.com" />
+                  </div>
+                </form>
+                <div id="overview-alerts" class="alerts"></div>
+                <div class="row-actions">
+                  <button type="button" id="btn-save-overview" class="btn">保存配置</button>
+                </div>
+                <p class="hint">
+                  匹配顺序：<strong>控制台动态路由</strong> → 代码 routes.js → 上游代理 / 404。
+                  同 method+path 时控制台配置覆盖代码 mock。
+                </p>
+              </div>
+              <div class="card stats-card">
+                <h3>摘要</h3>
+                <dl class="stats">
+                  <div><dt>动态路由</dt><dd id="stat-routes">0</dd></div>
+                  <div><dt>已启用</dt><dd id="stat-enabled-routes">0</dd></div>
+                  <div><dt>转发</dt><dd id="stat-proxy">off</dd></div>
+                  <div><dt>状态</dt><dd id="stat-status">—</dd></div>
+                </dl>
+              </div>
+            </section>
+
+            <!-- Routes -->
+            <section id="panel-routes" class="panel" data-panel="routes" hidden>
+              <div class="panel-toolbar">
+                <div>
+                  <h3 class="inline-title">动态接口</h3>
+                  <span class="muted small">精确匹配 path（不含 query）</span>
+                </div>
+                <button type="button" id="btn-new-route" class="btn">新建接口</button>
+              </div>
+              <div class="split">
+                <div class="card table-card">
+                  <table class="data-table" id="routes-table">
+                    <thead>
+                      <tr>
+                        <th>启用</th>
+                        <th>Method</th>
+                        <th>Path</th>
+                        <th>Status</th>
+                        <th>Delay</th>
+                        <th>名称</th>
+                        <th></th>
+                      </tr>
+                    </thead>
+                    <tbody id="routes-tbody">
+                      <tr><td colspan="7" class="muted">暂无动态路由</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+                <div class="card editor-card" id="route-editor" hidden>
+                  <div class="editor-head">
+                    <h3 id="editor-title">编辑接口</h3>
+                    <button type="button" id="btn-close-editor" class="btn btn-ghost btn-sm">关闭</button>
+                  </div>
+                  <form id="route-form" class="form-stack">
+                    <input type="hidden" name="id" />
+                    <div class="field">
+                      <label>名称</label>
+                      <input name="name" type="text" placeholder="可选备注" />
+                    </div>
+                    <div class="form-row">
+                      <div class="field">
+                        <label>Method</label>
+                        <select name="method">
+                          <option>GET</option>
+                          <option>POST</option>
+                          <option>PUT</option>
+                          <option>PATCH</option>
+                          <option>DELETE</option>
+                        </select>
+                      </div>
+                      <div class="field grow">
+                        <label>Path</label>
+                        <input name="path" type="text" placeholder="/api/v1/example" required />
+                      </div>
+                    </div>
+                    <div class="form-row">
+                      <div class="field">
+                        <label>Status</label>
+                        <input name="statusCode" type="number" min="100" max="599" value="200" />
+                      </div>
+                      <div class="field">
+                        <label>Delay (ms)</label>
+                        <input name="delayMs" type="number" min="0" max="60000" value="0" />
+                      </div>
+                      <label class="check field">
+                        <input name="enabled" type="checkbox" checked />
+                        启用
+                      </label>
+                    </div>
+                    <div class="field">
+                      <div class="label-row">
+                        <label>Response JSON</label>
+                        <button type="button" id="btn-format-json" class="btn btn-ghost btn-sm">格式化</button>
+                      </div>
+                      <textarea name="response" rows="14" class="mono" spellcheck="false">{
+  "code": 200,
+  "message": "success",
+  "data": {}
+}</textarea>
+                    </div>
+                    <div class="field">
+                      <label>额外响应头 JSON（可选）</label>
+                      <textarea name="headers" rows="3" class="mono" spellcheck="false">{}</textarea>
+                    </div>
+                    <div class="row-actions">
+                      <button type="submit" class="btn">保存接口</button>
+                      <button type="button" id="btn-delete-route" class="btn btn-danger" hidden>删除</button>
+                    </div>
+                    <p id="editor-hint" class="hint"></p>
+                  </form>
+                </div>
+              </div>
+            </section>
+
+            <!-- Logs -->
+            <section id="panel-logs" class="panel" data-panel="logs" hidden>
+              <div class="panel-toolbar">
+                <div class="log-controls">
+                  <label class="check">
+                    <input type="checkbox" id="logs-auto" checked />
+                    自动刷新
+                  </label>
+                  <button type="button" id="btn-refresh-logs" class="btn btn-ghost btn-sm">立即刷新</button>
+                  <button type="button" id="btn-clear-logs" class="btn btn-ghost btn-sm">清空</button>
+                </div>
+                <div class="legend">
+                  <span class="tag dynamic">dynamic</span>
+                  <span class="tag code">code</span>
+                  <span class="tag proxy">proxy</span>
+                  <span class="tag miss">miss</span>
+                </div>
+              </div>
+              <div class="card table-card">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>时间</th>
+                      <th>Method</th>
+                      <th>Path</th>
+                      <th>Source</th>
+                      <th>Status</th>
+                      <th>耗时</th>
+                    </tr>
+                  </thead>
+                  <tbody id="logs-tbody">
+                    <tr><td colspan="6" class="muted">暂无请求</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </main>
       </div>
-      <div class="header-actions">
-        <button type="button" id="refresh-btn" class="btn btn-ghost">刷新</button>
-      </div>
-    </header>
-
-    <main>
-      <section class="banner" id="global-message" hidden></section>
-      <section id="projects" class="projects" aria-live="polite">
-        <p class="muted">加载中…</p>
-      </section>
-    </main>
-
-    <footer class="footer">
-      <span>配置文件：<code>config/projects.json</code></span>
-      <span>保存后自动热重载对应项目实例</span>
-    </footer>
-
+    </div>
     <script type="module" src="/app.js"></script>
   </body>
 </html>
