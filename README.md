@@ -21,17 +21,34 @@ NEXT_PUBLIC_BACKEND_BASE_URL=http://localhost:4001
 ## 架构（当前）
 
 ```text
-请求 → 控制台动态路由 (routes.json)
-     → 代码 createRouter()（可选分支逻辑，默认空）
+请求 → 控制台动态接口（当前启用场景）
+     → 代码 createRouter()（可选，默认空）
      → 上游 proxy / 404
 ```
 
 | 层 | 职责 |
 |----|------|
-| **控制台动态路由** | 主 mock 源：method/path/status/delay/JSON，可热更新 |
-| **fixtures/** | 离线 fixture 库，用 `npm run seed:tts` 导入控制台 |
-| **代码 createRouter** | 仅复杂分支；tts-leaderboard 默认为空 Router |
-| **proxy** | 未 mock 时转发已有后端 |
+| **动态接口** | 一接口一条；内含多个**响应场景**，可一键切换 |
+| **fixtures/** | 离线样例，`npm run seed:tts` 导入 |
+| **proxy** | 未 mock 时转发真实后端 |
+
+### 一接口多场景
+
+```json
+{
+  "method": "POST",
+  "path": "/api/v1/arena/vote",
+  "enabled": true,
+  "activeScenarioId": "...",
+  "scenarios": [
+    { "name": "成功 A", "statusCode": 200, "response": {} },
+    { "name": "成功 B", "statusCode": 200, "response": {} },
+    { "name": "非法选择", "statusCode": 400, "response": {} }
+  ]
+}
+```
+
+旧版「每个响应单独一条路由」会在加载时**自动迁移**为场景模型。
 
 ## 控制台
 
@@ -39,8 +56,11 @@ http://localhost:4000
 
 - 侧栏切换项目
 - **概览**：启用 / 端口 / 上游
-- **接口 Mock**：增删改路由与响应
-- **请求日志**：dynamic / code / proxy / miss
+- **接口 Mock**
+  - 列表内下拉切换当前场景（联调即时生效）
+  - 编辑器：多场景 Tab、延迟预设、试请求、复制 curl
+  - 搜索、导入 / 导出 JSON
+- **请求日志**：source + **场景名**、耗时
 
 ## 配置
 

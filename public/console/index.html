@@ -13,7 +13,7 @@
           <span class="brand-mark">M</span>
           <div>
             <div class="brand-title">Mock 工作台</div>
-            <div class="brand-sub">多项目 · 接口配置 · 请求观测</div>
+            <div class="brand-sub">一接口多场景 · 联调友好</div>
           </div>
         </div>
         <div class="topbar-right">
@@ -36,7 +36,7 @@
         <main class="main">
           <div id="empty-state" class="empty-state" hidden>
             <h2>选择一个项目</h2>
-            <p class="muted">从左侧列表进入项目工作台，配置接口并查看请求日志。</p>
+            <p class="muted">从左侧进入项目工作台，配置接口场景并观测请求。</p>
           </div>
 
           <div id="workspace" hidden>
@@ -64,7 +64,6 @@
 
             <div id="toast" class="toast" hidden></div>
 
-            <!-- Overview -->
             <section id="panel-overview" class="panel" data-panel="overview">
               <div class="card">
                 <h3>运行配置</h3>
@@ -91,14 +90,14 @@
                   <button type="button" id="btn-save-overview" class="btn">保存配置</button>
                 </div>
                 <p class="hint">
-                  匹配顺序：<strong>控制台动态路由</strong> → 代码 routes.js → 上游代理 / 404。
-                  同 method+path 时控制台配置覆盖代码 mock。
+                  匹配：<strong>动态接口（当前场景）</strong> → 代码 Router → 上游 / 404。
+                  同一 method+path 仅一条接口；场景在接口内切换，无需新建条目。
                 </p>
               </div>
               <div class="card stats-card">
                 <h3>摘要</h3>
                 <dl class="stats">
-                  <div><dt>动态路由</dt><dd id="stat-routes">0</dd></div>
+                  <div><dt>接口数</dt><dd id="stat-routes">0</dd></div>
                   <div><dt>已启用</dt><dd id="stat-enabled-routes">0</dd></div>
                   <div><dt>转发</dt><dd id="stat-proxy">off</dd></div>
                   <div><dt>状态</dt><dd id="stat-status">—</dd></div>
@@ -106,23 +105,36 @@
               </div>
             </section>
 
-            <!-- Routes -->
             <section id="panel-routes" class="panel" data-panel="routes" hidden>
               <div class="panel-toolbar">
-                <div>
-                  <h3 class="inline-title">动态接口</h3>
-                  <span class="muted small">精确匹配 path（不含 query）</span>
+                <div class="toolbar-left">
+                  <h3 class="inline-title">接口列表</h3>
+                  <input
+                    id="route-search"
+                    type="search"
+                    class="search-input"
+                    placeholder="搜索 method / path / 名称…"
+                  />
                 </div>
-                <button type="button" id="btn-new-route" class="btn">新建接口</button>
+                <div class="toolbar-right">
+                  <button type="button" id="btn-export-routes" class="btn btn-ghost btn-sm">导出 JSON</button>
+                  <label class="btn btn-ghost btn-sm file-btn">
+                    导入 JSON
+                    <input type="file" id="btn-import-routes" accept="application/json,.json" hidden />
+                  </label>
+                  <button type="button" id="btn-new-route" class="btn">新建接口</button>
+                </div>
               </div>
-              <div class="split">
+
+              <div class="split" id="routes-split">
                 <div class="card table-card">
-                  <table class="data-table" id="routes-table">
+                  <table class="data-table">
                     <thead>
                       <tr>
                         <th>启用</th>
                         <th>Method</th>
                         <th>Path</th>
+                        <th>当前场景</th>
                         <th>Status</th>
                         <th>Delay</th>
                         <th>名称</th>
@@ -130,21 +142,33 @@
                       </tr>
                     </thead>
                     <tbody id="routes-tbody">
-                      <tr><td colspan="7" class="muted">暂无动态路由</td></tr>
+                      <tr>
+                        <td colspan="8" class="muted">暂无接口</td>
+                      </tr>
                     </tbody>
                   </table>
                 </div>
+
                 <div class="card editor-card" id="route-editor" hidden>
                   <div class="editor-head">
                     <h3 id="editor-title">编辑接口</h3>
                     <button type="button" id="btn-close-editor" class="btn btn-ghost btn-sm">关闭</button>
                   </div>
+
                   <form id="route-form" class="form-stack">
                     <input type="hidden" name="id" />
-                    <div class="field">
-                      <label>名称</label>
-                      <input name="name" type="text" placeholder="可选备注" />
+
+                    <div class="form-row">
+                      <div class="field grow">
+                        <label>接口名称</label>
+                        <input name="name" type="text" placeholder="例如：Arena 投票" />
+                      </div>
+                      <label class="check field">
+                        <input name="enabled" type="checkbox" checked />
+                        启用接口
+                      </label>
                     </div>
+
                     <div class="form-row">
                       <div class="field">
                         <label>Method</label>
@@ -161,46 +185,82 @@
                         <input name="path" type="text" placeholder="/api/v1/example" required />
                       </div>
                     </div>
-                    <div class="form-row">
-                      <div class="field">
-                        <label>Status</label>
-                        <input name="statusCode" type="number" min="100" max="599" value="200" />
-                      </div>
-                      <div class="field">
-                        <label>Delay (ms)</label>
-                        <input name="delayMs" type="number" min="0" max="60000" value="0" />
-                      </div>
-                      <label class="check field">
-                        <input name="enabled" type="checkbox" checked />
-                        启用
-                      </label>
-                    </div>
+
                     <div class="field">
-                      <div class="label-row">
-                        <label>Response JSON</label>
-                        <button type="button" id="btn-format-json" class="btn btn-ghost btn-sm">格式化</button>
+                      <label>备注（联调说明）</label>
+                      <input name="note" type="text" placeholder="可选：header、body 约定等" />
+                    </div>
+
+                    <div class="scenario-block">
+                      <div class="scenario-block-head">
+                        <h4>响应场景</h4>
+                        <button type="button" id="btn-add-scenario" class="btn btn-ghost btn-sm">+ 场景</button>
                       </div>
-                      <textarea name="response" rows="14" class="mono" spellcheck="false">{
-  "code": 200,
-  "message": "success",
-  "data": {}
-}</textarea>
+                      <div id="scenario-tabs" class="scenario-tabs"></div>
+
+                      <div class="scenario-fields">
+                        <input type="hidden" id="sc-id" />
+                        <div class="form-row">
+                          <div class="field grow">
+                            <label>场景名称</label>
+                            <input id="sc-name" type="text" placeholder="成功 / 失败 / 空数据…" />
+                          </div>
+                          <label class="check field">
+                            <input id="sc-active" type="radio" name="activeScenario" />
+                            设为当前启用
+                          </label>
+                        </div>
+                        <div class="form-row">
+                          <div class="field">
+                            <label>HTTP Status</label>
+                            <input id="sc-status" type="number" min="100" max="599" value="200" />
+                          </div>
+                          <div class="field">
+                            <label>Delay (ms)</label>
+                            <input id="sc-delay" type="number" min="0" max="60000" value="0" />
+                          </div>
+                          <div class="field delay-presets">
+                            <label>快捷延迟</label>
+                            <div class="chip-row">
+                              <button type="button" class="chip" data-delay="0">0</button>
+                              <button type="button" class="chip" data-delay="300">300</button>
+                              <button type="button" class="chip" data-delay="1000">1s</button>
+                              <button type="button" class="chip" data-delay="3000">3s</button>
+                            </div>
+                          </div>
+                        </div>
+                        <div class="field">
+                          <div class="label-row">
+                            <label>Response JSON</label>
+                            <button type="button" id="btn-format-json" class="btn btn-ghost btn-sm">格式化</button>
+                          </div>
+                          <textarea id="sc-response" rows="12" class="mono" spellcheck="false"></textarea>
+                        </div>
+                        <div class="field">
+                          <label>响应头 JSON（可选）</label>
+                          <textarea id="sc-headers" rows="2" class="mono" spellcheck="false">{}</textarea>
+                        </div>
+                        <div class="row-actions">
+                          <button type="button" id="btn-delete-scenario" class="btn btn-ghost btn-sm">
+                            删除此场景
+                          </button>
+                        </div>
+                      </div>
                     </div>
-                    <div class="field">
-                      <label>额外响应头 JSON（可选）</label>
-                      <textarea name="headers" rows="3" class="mono" spellcheck="false">{}</textarea>
-                    </div>
+
                     <div class="row-actions">
                       <button type="submit" class="btn">保存接口</button>
-                      <button type="button" id="btn-delete-route" class="btn btn-danger" hidden>删除</button>
+                      <button type="button" id="btn-try-route" class="btn btn-ghost">试请求</button>
+                      <button type="button" id="btn-copy-curl" class="btn btn-ghost">复制 curl</button>
+                      <button type="button" id="btn-delete-route" class="btn btn-danger" hidden>删除接口</button>
                     </div>
                     <p id="editor-hint" class="hint"></p>
+                    <pre id="try-result" class="try-result mono" hidden></pre>
                   </form>
                 </div>
               </div>
             </section>
 
-            <!-- Logs -->
             <section id="panel-logs" class="panel" data-panel="logs" hidden>
               <div class="panel-toolbar">
                 <div class="log-controls">
@@ -226,12 +286,15 @@
                       <th>Method</th>
                       <th>Path</th>
                       <th>Source</th>
+                      <th>场景</th>
                       <th>Status</th>
                       <th>耗时</th>
                     </tr>
                   </thead>
                   <tbody id="logs-tbody">
-                    <tr><td colspan="6" class="muted">暂无请求</td></tr>
+                    <tr>
+                      <td colspan="7" class="muted">暂无请求</td>
+                    </tr>
                   </tbody>
                 </table>
               </div>

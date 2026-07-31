@@ -306,6 +306,25 @@ export function createProjectManager({ codeProjects }) {
     return { ok: true }
   }
 
+  /**
+   * Switch active scenario for a route (联调一键切换响应).
+   */
+  function setActiveScenario(slug, routeId, scenarioId) {
+    ensureKnown(slug)
+    const current = routesBySlug.get(slug) || []
+    const idx = current.findIndex((r) => r.id === routeId)
+    if (idx < 0) {
+      throw Object.assign(new Error(`Route not found: ${routeId}`), { statusCode: 404 })
+    }
+    const route = current[idx]
+    if (!route.scenarios.some((s) => s.id === scenarioId)) {
+      throw Object.assign(new Error(`Scenario not found: ${scenarioId}`), {
+        statusCode: 404,
+      })
+    }
+    return updateRoute(slug, routeId, { activeScenarioId: scenarioId })
+  }
+
   function listLogs(slug, limit) {
     ensureKnown(slug)
     return requestLogs.list(slug, limit)
@@ -348,6 +367,7 @@ export function createProjectManager({ codeProjects }) {
     createRoute,
     updateRoute,
     deleteRoute,
+    setActiveScenario,
     listLogs,
     clearLogs,
   }

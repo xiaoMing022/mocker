@@ -1,4 +1,5 @@
 import { sendJson } from "../lib/http.js"
+import { getActiveScenario } from "./route-store.js"
 
 /**
  * @param {{
@@ -8,7 +9,6 @@ import { sendJson } from "../lib/http.js"
 export function createDynamicRoutesMiddleware({ getRoutes }) {
   return async function dynamicRoutesMiddleware(req, res, next) {
     const method = req.method.toUpperCase()
-    // Use path without query; express req.path is pathname
     const reqPath = req.path
 
     const routes = getRoutes()
@@ -21,13 +21,27 @@ export function createDynamicRoutesMiddleware({ getRoutes }) {
       return
     }
 
-    res.locals.mockSource = "dynamic"
-    res.locals.mockRouteId = hit.id
-
-    for (const [key, value] of Object.entries(hit.headers || {})) {
-      res.setHeader(key, value)
+    const scenario = getActiveScenario(hit)
+    if (!scenario) {
+      next()
+      return
     }
 
-    await sendJson(res, hit.response, hit.statusCode, hit.delayMs)
+    res.locals.mockSource = "dynamic"
+    res.locals.mockRouteId = hit.id
+    res.locals.mockScenarioId = scenario.id
+    res.locals.mockScenarioName = scenario.name
+    res.locals.mockRouteName = hit.name || `${hit.method} ${hit.path}`
+
+    for (const [key, value] of Object.entries(scenario.headers || {})) {
+      res.setHeader(key, value)
+    }
+    res.setHeader("X-Mock-Route", hit.id)
+    res.setHeader("X-Mock-Scenario", scenario.id)
+    if (scenario.name) {
+      res.setHeader("X-Mock-Scenario-Name", encodeURIComponent(scenario.name))
+    }
+
+    await sendJson(res, scenario.response, scenario.statusCode, scenario.delayMs)
   }
 }

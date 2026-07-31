@@ -38,6 +38,8 @@ export function createProjectApp({ project, runtime, getRoutes, onRequestLog }) 
         status: res.statusCode,
         durationMs: Date.now() - started,
         source,
+        scenarioName: res.locals.mockScenarioName || null,
+        routeName: res.locals.mockRouteName || null,
       })
     })
 

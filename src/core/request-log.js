@@ -10,7 +10,9 @@
  *   path: string,
  *   status: number | null,
  *   durationMs: number | null,
- *   source: 'dynamic' | 'code' | 'proxy' | 'miss' | 'unknown'
+ *   source: 'dynamic' | 'code' | 'proxy' | 'miss' | 'unknown',
+ *   scenarioName?: string | null,
+ *   routeName?: string | null
  * }} RequestLogEntry
  */
 
@@ -24,9 +26,6 @@ export function createRequestLogStore({ maxPerProject = DEFAULT_LIMIT } = {}) {
   const logs = new Map()
   let seq = 0
 
-  /**
-   * @param {string} slug
-   */
   function ensure(slug) {
     if (!logs.has(slug)) logs.set(slug, [])
     return logs.get(slug)
@@ -47,25 +46,20 @@ export function createRequestLogStore({ maxPerProject = DEFAULT_LIMIT } = {}) {
       status: entry.status ?? null,
       durationMs: entry.durationMs ?? null,
       source: entry.source || "unknown",
+      scenarioName: entry.scenarioName ?? null,
+      routeName: entry.routeName ?? null,
     })
     if (list.length > maxPerProject) {
       list.length = maxPerProject
     }
   }
 
-  /**
-   * @param {string} slug
-   * @param {number} [limit]
-   */
   function list(slug, limit = 50) {
     const listEntries = ensure(slug)
     const n = Math.min(Math.max(Number(limit) || 50, 1), maxPerProject)
     return listEntries.slice(0, n)
   }
 
-  /**
-   * @param {string} slug
-   */
   function clear(slug) {
     logs.set(slug, [])
   }

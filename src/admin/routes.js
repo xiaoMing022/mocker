@@ -104,6 +104,29 @@ export function registerAdminRoutes(app, { manager }) {
     }
   })
 
+  /** 切换接口当前启用的响应场景 */
+  app.post("/__mock/projects/:slug/routes/:id/activate-scenario", (req, res) => {
+    try {
+      const scenarioId = req.body?.scenarioId
+      if (!scenarioId) {
+        res.status(400).json({
+          code: 400,
+          message: "scenarioId is required",
+          data: null,
+        })
+        return
+      }
+      const route = manager.setActiveScenario(
+        req.params.slug,
+        req.params.id,
+        scenarioId,
+      )
+      res.json({ route })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
   // ── Request logs ────────────────────────────────────────────
 
   app.get("/__mock/projects/:slug/logs", (req, res) => {

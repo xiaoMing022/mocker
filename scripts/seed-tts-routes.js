@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Seed tts-leaderboard console routes from fixtures/web + fixtures/admin.
+ * Seed tts-leaderboard console routes (scenario model) from fixtures.
  * Usage: npm run seed:tts
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
@@ -17,17 +17,30 @@ function read(...segs) {
   return JSON.parse(readFileSync(path.join(fixturesDir, ...segs), "utf8"))
 }
 
+function scenario(partial) {
+  return {
+    id: randomUUID(),
+    name: partial.name || "默认",
+    statusCode: partial.statusCode ?? 200,
+    delayMs: partial.delayMs ?? 120,
+    response: partial.response ?? {},
+    headers: partial.headers ?? {},
+  }
+}
+
 function route(partial) {
+  const scenarios = (partial.scenarios || []).map(scenario)
+  const active =
+    scenarios.find((s) => s.name === partial.activeScenarioName) || scenarios[0]
   return {
     id: randomUUID(),
     name: partial.name,
     method: partial.method,
     path: partial.path,
     enabled: partial.enabled !== false,
-    statusCode: partial.statusCode ?? 200,
-    delayMs: partial.delayMs ?? 120,
-    response: partial.response,
-    headers: partial.headers ?? {},
+    activeScenarioId: active?.id || "",
+    scenarios,
+    note: partial.note || "",
   }
 }
 
@@ -38,96 +51,180 @@ const routes = [
     name: "[web] Arena 校验会话",
     method: "POST",
     path: "/api/v1/arena/verify",
-    delayMs: 120,
-    response: read("web", "arena-verify-success.json"),
+    note: "body: { turnstileToken }",
+    scenarios: [
+      {
+        name: "成功",
+        delayMs: 120,
+        response: read("web", "arena-verify-success.json"),
+      },
+      {
+        name: "缺少 token",
+        statusCode: 400,
+        delayMs: 80,
+        response: { code: 400, message: "缺少 turnstileToken", data: null },
+      },
+    ],
   }),
   route({
     name: "[web] Arena 对战",
     method: "POST",
     path: "/api/v1/arena/battle",
-    delayMs: 120,
-    response: read("web", "arena-battle.json"),
+    note: "需要请求头 X-Session-Token（业务侧校验；mock 可直接返回成功）",
+    scenarios: [
+      {
+        name: "成功",
+        delayMs: 120,
+        response: read("web", "arena-battle.json"),
+      },
+      {
+        name: "未授权",
+        statusCode: 401,
+        delayMs: 80,
+        response: {
+          code: 401,
+          message: "sessionToken 无效或已过期",
+          data: null,
+        },
+      },
+    ],
   }),
   route({
-    name: "[web] Arena 投票成功 A（默认）",
+    name: "[web] Arena 投票",
     method: "POST",
     path: "/api/v1/arena/vote",
-    delayMs: 180,
-    response: read("web", "arena-vote-success-a.json"),
-  }),
-  route({
-    name: "[web] Arena 投票成功 B（备用，默认关闭）",
-    method: "POST",
-    path: "/api/v1/arena/vote",
-    enabled: false,
-    delayMs: 180,
-    response: read("web", "arena-vote-success-b.json"),
-  }),
-  route({
-    name: "[web] Arena 投票非法选择（备用，默认关闭）",
-    method: "POST",
-    path: "/api/v1/arena/vote",
-    enabled: false,
-    delayMs: 180,
-    statusCode: 400,
-    response: read("web", "arena-vote-invalid-choice.json"),
+    note: "联调时在此切换 A / B / 非法 场景",
+    activeScenarioName: "成功 A",
+    scenarios: [
+      {
+        name: "成功 A",
+        delayMs: 180,
+        response: read("web", "arena-vote-success-a.json"),
+      },
+      {
+        name: "成功 B",
+        delayMs: 180,
+        response: read("web", "arena-vote-success-b.json"),
+      },
+      {
+        name: "非法选择",
+        statusCode: 400,
+        delayMs: 180,
+        response: read("web", "arena-vote-invalid-choice.json"),
+      },
+      {
+        name: "未授权",
+        statusCode: 401,
+        delayMs: 80,
+        response: {
+          code: 401,
+          message: "sessionToken 无效或已过期",
+          data: null,
+        },
+      },
+    ],
   }),
   route({
     name: "[web] 排行榜",
     method: "GET",
     path: "/api/v1/leaderboard",
-    delayMs: 120,
-    response: {
-      code: 200,
-      message: "success",
-      data: {
-        snapshotTime: "2026-06-30T10:00:00+08:00",
-        items: leaderboardEntries,
+    scenarios: [
+      {
+        name: "正常列表",
+        delayMs: 120,
+        response: {
+          code: 200,
+          message: "success",
+          data: {
+            snapshotTime: "2026-06-30T10:00:00+08:00",
+            items: leaderboardEntries,
+          },
+        },
       },
-    },
+      {
+        name: "空列表",
+        delayMs: 80,
+        response: {
+          code: 200,
+          message: "success",
+          data: { snapshotTime: "2026-06-30T10:00:00+08:00", items: [] },
+        },
+      },
+    ],
   }),
   route({
     name: "[web] 提交联系表单",
     method: "POST",
     path: "/api/v1/contact",
-    delayMs: 200,
-    response: {
-      code: 200,
-      message: "success",
-      data: { success: true },
-    },
+    scenarios: [
+      {
+        name: "成功",
+        delayMs: 200,
+        response: { code: 200, message: "success", data: { success: true } },
+      },
+      {
+        name: "参数错误",
+        statusCode: 400,
+        delayMs: 100,
+        response: {
+          code: 400,
+          message: "请填写姓名、邮箱与具体信息",
+          data: null,
+        },
+      },
+    ],
   }),
   route({
     name: "[web] 站点联系信息",
     method: "GET",
     path: "/api/v1/site/contact-info",
-    delayMs: 100,
-    response: read("web", "site-contact-info.json"),
+    scenarios: [
+      {
+        name: "默认",
+        delayMs: 100,
+        response: read("web", "site-contact-info.json"),
+      },
+    ],
   }),
   route({
     name: "[admin] 统计",
     method: "GET",
     path: "/api/admin/stats",
-    delayMs: 120,
-    response: read("admin", "admin-stats.json"),
+    scenarios: [
+      { name: "默认", delayMs: 120, response: read("admin", "admin-stats.json") },
+    ],
   }),
   route({
     name: "[admin] 模型列表",
     method: "GET",
     path: "/api/admin/models",
-    delayMs: 160,
-    response: read("admin", "admin-models.json"),
+    scenarios: [
+      {
+        name: "默认",
+        delayMs: 160,
+        response: read("admin", "admin-models.json"),
+      },
+    ],
   }),
   route({
     name: "[admin] 排行榜",
     method: "GET",
     path: "/api/admin/leaderboard",
-    delayMs: 160,
-    response: read("admin", "admin-leaderboard.json"),
+    scenarios: [
+      {
+        name: "默认",
+        delayMs: 160,
+        response: read("admin", "admin-leaderboard.json"),
+      },
+    ],
   }),
 ]
 
 if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
-writeFileSync(outFile, `${JSON.stringify({ routes }, null, 2)}\n`)
-console.log(`Seeded ${routes.length} routes → ${path.relative(root, outFile)}`)
-console.log("Restart mock server (or reload project) to pick up if already running.")
+writeFileSync(
+  outFile,
+  `${JSON.stringify({ version: 2, routes }, null, 2)}\n`,
+)
+console.log(
+  `Seeded ${routes.length} interfaces (${routes.reduce((n, r) => n + r.scenarios.length, 0)} scenarios) → ${path.relative(root, outFile)}`,
+)
