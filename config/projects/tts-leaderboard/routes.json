@@ -1,7 +1,7 @@
 {
   "routes": [
     {
-      "id": "3824608e-481e-4e07-b5b2-9b4b1aea37b2",
+      "id": "a15b34b5-673a-4a7a-803c-712f20bca28d",
       "name": "[web] Arena 校验会话",
       "method": "POST",
       "path": "/api/v1/arena/verify",
@@ -18,7 +18,7 @@
       "headers": {}
     },
     {
-      "id": "410093cd-f9c9-4fb5-ad2d-1b04bacff8c9",
+      "id": "f323b3e1-c078-4e4b-87ca-5341500efd35",
       "name": "[web] Arena 对战",
       "method": "POST",
       "path": "/api/v1/arena/battle",
@@ -46,7 +46,7 @@
       "headers": {}
     },
     {
-      "id": "83ca3c4d-919e-4e37-9749-662869325ac1",
+      "id": "de01b0c4-8cc7-497f-9e3c-a0ea0388eb6c",
       "name": "[web] Arena 投票成功 A（默认）",
       "method": "POST",
       "path": "/api/v1/arena/vote",
@@ -75,7 +75,7 @@
       "headers": {}
     },
     {
-      "id": "ee667842-7efd-4147-93c1-402a8b664d3a",
+      "id": "3436614e-b75c-42c6-846d-60c623b28818",
       "name": "[web] Arena 投票成功 B（备用，默认关闭）",
       "method": "POST",
       "path": "/api/v1/arena/vote",
@@ -104,7 +104,7 @@
       "headers": {}
     },
     {
-      "id": "ae11b6a8-e3d6-4bf9-9a03-537810032910",
+      "id": "b62f495c-60d1-4b27-8e49-6ffc0200e6b5",
       "name": "[web] Arena 投票非法选择（备用，默认关闭）",
       "method": "POST",
       "path": "/api/v1/arena/vote",
@@ -122,7 +122,7 @@
       "headers": {}
     },
     {
-      "id": "64224db5-d05f-46cf-892c-fc7643a8774e",
+      "id": "aac3df6b-37ca-4df3-8bd4-8ffb70f0aab3",
       "name": "[web] 排行榜",
       "method": "GET",
       "path": "/api/v1/leaderboard",
@@ -284,7 +284,7 @@
       "headers": {}
     },
     {
-      "id": "2a576f72-89b9-46dd-86fe-1537b07bbda4",
+      "id": "7db3b45f-db7f-41dd-9539-690cb008fc8e",
       "name": "[web] 提交联系表单",
       "method": "POST",
       "path": "/api/v1/contact",
@@ -301,7 +301,7 @@
       "headers": {}
     },
     {
-      "id": "9ee5ef0a-11bd-447e-8e05-1c7e47184148",
+      "id": "d5722b1a-f2cd-45dd-a064-09473b0848a6",
       "name": "[web] 站点联系信息",
       "method": "GET",
       "path": "/api/v1/site/contact-info",
@@ -352,7 +352,7 @@
       "headers": {}
     },
     {
-      "id": "24255389-1817-4a55-99de-04fb7c2817b7",
+      "id": "068bc856-8660-4c57-a722-b63ea47bd10b",
       "name": "[admin] 统计",
       "method": "GET",
       "path": "/api/admin/stats",
@@ -372,7 +372,7 @@
       "headers": {}
     },
     {
-      "id": "3396f392-a58f-4733-a836-faff173ad89b",
+      "id": "1066731d-0420-4810-9f64-de4b143b3dc8",
       "name": "[admin] 模型列表",
       "method": "GET",
       "path": "/api/admin/models",
@@ -404,7 +404,7 @@
       "headers": {}
     },
     {
-      "id": "e1081ee3-c702-45de-878b-765aa7d6dddd",
+      "id": "ee9e0dbb-cdc3-44f4-bdf1-45305e5f0aca",
       "name": "[admin] 排行榜",
       "method": "GET",
       "path": "/api/admin/leaderboard",

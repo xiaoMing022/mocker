@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Seed tts-leaderboard console routes from data/web + data/admin fixtures.
- * Usage: node scripts/seed-tts-routes.js
+ * Seed tts-leaderboard console routes from fixtures/web + fixtures/admin.
+ * Usage: npm run seed:tts
  */
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs"
 import path from "node:path"
@@ -9,12 +9,12 @@ import { randomUUID } from "node:crypto"
 import { fileURLToPath } from "node:url"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-const dataDir = path.join(root, "src/projects/tts-leaderboard/data")
+const fixturesDir = path.join(root, "src/projects/tts-leaderboard/fixtures")
 const outDir = path.join(root, "config/projects/tts-leaderboard")
 const outFile = path.join(outDir, "routes.json")
 
 function read(...segs) {
-  return JSON.parse(readFileSync(path.join(dataDir, ...segs), "utf8"))
+  return JSON.parse(readFileSync(path.join(fixturesDir, ...segs), "utf8"))
 }
 
 function route(partial) {
