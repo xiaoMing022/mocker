@@ -130,17 +130,33 @@ export const myAppProject = {
 
 ## TTS Leaderboard 接口
 
-在项目端口根路径提供（默认 `4001`）：
+在项目端口根路径提供（默认 `4001`）。
 
-- `POST /api/v1/arena/verify`
-- `POST /api/v1/arena/battle`
-- `POST /api/v1/arena/vote`
-- `GET /api/v1/leaderboard`
-- `POST /api/v1/contact`
-- `GET /api/v1/site/contact-info`
-- `GET /api/admin/stats`
-- `GET /api/admin/models`
-- `GET /api/admin/leaderboard`
+Fixture 来源：
+
+- Web：`src/projects/tts-leaderboard/data/web/*.json`
+- Admin：`src/projects/tts-leaderboard/data/admin/*.json`
+
+这些响应已导入控制台动态路由（`config/projects/tts-leaderboard/routes.json`），可在工作台 **接口 Mock** 里直接改。  
+从 fixture 重新导入（会生成新 id，覆盖现有动态路由表）：
+
+```bash
+npm run seed:tts
+```
+
+| 接口 | 说明 |
+|------|------|
+| `POST /api/v1/arena/verify` | Arena 校验 |
+| `POST /api/v1/arena/battle` | Arena 对战 |
+| `POST /api/v1/arena/vote` | 投票（默认成功 A；B / 非法 在控制台为备用关闭项） |
+| `GET /api/v1/leaderboard` | 排行榜 |
+| `POST /api/v1/contact` | 联系表单 |
+| `GET /api/v1/site/contact-info` | 站点联系信息 |
+| `GET /api/admin/stats` | 管理端统计 |
+| `GET /api/admin/models` | 管理端模型 |
+| `GET /api/admin/leaderboard` | 管理端排行榜 |
+
+代码侧 `routes.js` 仍保留分支校验逻辑；当某条动态路由 **禁用** 时会回落到代码 mock。
 
 ## 转发行为
 
