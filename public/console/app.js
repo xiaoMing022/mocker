@@ -4,7 +4,7 @@
 
 /** @typedef {{ id: string, name: string, statusCode: number, delayMs: number, response: unknown, headers: Record<string,string> }} Scenario */
 /** @typedef {{ id: string, name: string, method: string, path: string, enabled: boolean, activeScenarioId: string, scenarios: Scenario[], note?: string }} Route */
-/** @typedef {{ slug: string, name: string, description?: string, enabled: boolean, port: number, proxy: any, status: string, lastError?: string, warning?: string, url?: string|null, routeCount?: number, enabledRouteCount?: number }} Project */
+/** @typedef {{ slug: string, name: string, description?: string, enabled: boolean, port: number, proxy: any, status: string, lastError?: string, warning?: string, url?: string|null, routeCount?: number, enabledRouteCount?: number, managed?: boolean }} Project */
 
 const state = {
   projects: /** @type {Project[]} */ ([]),
@@ -35,6 +35,12 @@ const els = {
   wsDesc: $("ws-desc"),
   btnCopyUrl: $("btn-copy-url"),
   btnReload: $("btn-reload"),
+  btnToggleProject: $("btn-toggle-project"),
+  btnToggleProject2: $("btn-toggle-project-2"),
+  btnDeleteProject: $("btn-delete-project"),
+  btnNewProject: $("btn-new-project"),
+  newProjectModal: $("new-project-modal"),
+  newProjectForm: $("new-project-form"),
   toast: $("toast"),
   overviewForm: $("overview-form"),
   overviewAlerts: $("overview-alerts"),
@@ -105,7 +111,8 @@ els.btnSaveOverview.addEventListener("click", async () => {
   const fd = new FormData(els.overviewForm)
   try {
     await api("PATCH", `/__mock/projects/${state.slug}`, {
-      enabled: fd.get("enabled") === "on",
+      name: String(fd.get("name") || "").trim(),
+      description: String(fd.get("description") || "").trim(),
       port: Number(fd.get("port")),
       proxy: {
         enabled: fd.get("proxyEnabled") === "on",
@@ -117,6 +124,96 @@ els.btnSaveOverview.addEventListener("click", async () => {
   } catch (e) {
     toast(e.message, "err")
   }
+})
+
+async function toggleProjectOpenClose() {
+  const p = currentProject()
+  if (!p || !state.slug) return
+  try {
+    if (p.enabled) {
+      await api("POST", `/__mock/projects/${state.slug}/close`)
+      toast("项目已关闭（端口已释放）", "ok")
+    } else {
+      await api("POST", `/__mock/projects/${state.slug}/open`)
+      toast("项目已开启", "ok")
+    }
+    await bootstrap({ keepSelection: true })
+  } catch (e) {
+    toast(e.message, "err")
+  }
+}
+
+els.btnToggleProject?.addEventListener("click", () => void toggleProjectOpenClose())
+els.btnToggleProject2?.addEventListener("click", () => void toggleProjectOpenClose())
+
+els.btnDeleteProject?.addEventListener("click", async () => {
+  const p = currentProject()
+  if (!p || !state.slug || !p.managed) return
+  if (!confirm(`确定删除项目「${p.name}」？此操作不可从代码恢复（配置会移除）。`)) return
+  try {
+    await api("DELETE", `/__mock/projects/${state.slug}`)
+    toast("项目已删除", "ok")
+    state.slug = null
+    writeHash()
+    await bootstrap()
+  } catch (e) {
+    toast(e.message, "err")
+  }
+})
+
+function openNewProjectModal() {
+  els.newProjectModal.hidden = false
+  els.newProjectForm.reset()
+}
+
+function closeNewProjectModal() {
+  els.newProjectModal.hidden = true
+}
+
+els.btnNewProject?.addEventListener("click", openNewProjectModal)
+els.newProjectModal?.querySelectorAll("[data-close-modal]").forEach((el) => {
+  el.addEventListener("click", closeNewProjectModal)
+})
+
+els.newProjectForm?.addEventListener("submit", async (ev) => {
+  ev.preventDefault()
+  const fd = new FormData(els.newProjectForm)
+  const portRaw = String(fd.get("port") || "").trim()
+  const body = {
+    name: String(fd.get("name") || "").trim(),
+    slug: String(fd.get("slug") || "").trim().toLowerCase(),
+    description: String(fd.get("description") || "").trim(),
+    enabled: true,
+  }
+  if (portRaw) body.port = Number(portRaw)
+
+  try {
+    const res = await api("POST", "/__mock/projects", body)
+    toast(`已创建项目 ${res.project?.name}`, "ok")
+    closeNewProjectModal()
+    state.slug = res.project?.slug || body.slug
+    state.tab = "routes"
+    writeHash()
+    await bootstrap({ keepSelection: true })
+  } catch (e) {
+    toast(e.message, "err")
+  }
+})
+
+// auto-slug from name when slug empty
+els.newProjectForm?.elements.namedItem("name")?.addEventListener("input", (ev) => {
+  const slugInput = els.newProjectForm.elements.namedItem("slug")
+  if (!(slugInput instanceof HTMLInputElement) || slugInput.dataset.touched === "1") return
+  const name = /** @type {HTMLInputElement} */ (ev.target).value
+  slugInput.value = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48)
+})
+els.newProjectForm?.elements.namedItem("slug")?.addEventListener("input", (ev) => {
+  /** @type {HTMLInputElement} */ (ev.target).dataset.touched = "1"
 })
 
 document.querySelectorAll(".tab").forEach((tab) => {
@@ -402,9 +499,13 @@ function renderProjectNav() {
   for (const p of state.projects) {
     const btn = document.createElement("button")
     btn.type = "button"
-    btn.className = `project-item${p.slug === state.slug ? " active" : ""}`
+    btn.className = `project-item${p.slug === state.slug ? " active" : ""}${
+      p.enabled ? "" : " closed"
+    }`
     btn.innerHTML = `
-      <div class="name">${esc(p.name)}</div>
+      <div class="name">${esc(p.name)}${
+        p.enabled ? "" : '<span class="badge-closed">已关闭</span>'
+      }</div>
       <div class="meta">
         <span class="dot ${esc(p.status)}"></span>
         <span>${esc(p.status)}</span>
@@ -450,12 +551,23 @@ async function renderAll() {
   }
 
   const form = els.overviewForm
-  form.elements.namedItem("enabled").checked = p.enabled
+  form.elements.namedItem("name").value = p.name || ""
+  form.elements.namedItem("description").value = p.description || ""
   form.elements.namedItem("port").value = String(p.port)
   form.elements.namedItem("proxyEnabled").checked = Boolean(p.proxy?.enabled)
   form.elements.namedItem("target").value = p.proxy?.target || ""
 
+  const toggleLabel = p.enabled ? "关闭项目" : "开启项目"
+  if (els.btnToggleProject) els.btnToggleProject.textContent = toggleLabel
+  if (els.btnToggleProject2) els.btnToggleProject2.textContent = toggleLabel
+  if (els.btnDeleteProject) {
+    els.btnDeleteProject.hidden = !p.managed
+  }
+
   els.overviewAlerts.innerHTML = ""
+  if (!p.enabled) {
+    els.overviewAlerts.innerHTML += `<div class="alert warn">项目已关闭：不监听端口。点「开启项目」可恢复。</div>`
+  }
   if (p.lastError) {
     els.overviewAlerts.innerHTML += `<div class="alert err">错误：${esc(p.lastError)}</div>`
   }

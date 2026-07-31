@@ -28,6 +28,9 @@
             <span>项目</span>
             <span id="project-count" class="muted small">0</span>
           </div>
+          <div class="sidebar-actions">
+            <button type="button" id="btn-new-project" class="btn btn-sm sidebar-new">+ 新建项目</button>
+          </div>
           <nav id="project-nav" class="project-nav" aria-label="项目列表">
             <p class="muted pad">加载中…</p>
           </nav>
@@ -51,8 +54,10 @@
                 <p id="ws-desc" class="muted small"></p>
               </div>
               <div class="ws-actions">
+                <button type="button" id="btn-toggle-project" class="btn btn-ghost">关闭项目</button>
                 <button type="button" id="btn-copy-url" class="btn btn-ghost" disabled>复制 Base URL</button>
                 <button type="button" id="btn-reload" class="btn btn-ghost">重载实例</button>
+                <button type="button" id="btn-delete-project" class="btn btn-danger btn-sm" hidden>删除项目</button>
               </div>
             </div>
 
@@ -68,13 +73,17 @@
               <div class="card">
                 <h3>运行配置</h3>
                 <form id="overview-form" class="form-grid">
-                  <label class="check">
-                    <input type="checkbox" name="enabled" />
-                    启用项目
-                  </label>
+                  <div class="field">
+                    <label for="ov-name">显示名称</label>
+                    <input id="ov-name" name="name" type="text" />
+                  </div>
                   <div class="field">
                     <label for="ov-port">监听端口</label>
                     <input id="ov-port" name="port" type="number" min="1" max="65535" required />
+                  </div>
+                  <div class="field full">
+                    <label for="ov-desc">描述</label>
+                    <input id="ov-desc" name="description" type="text" placeholder="可选" />
                   </div>
                   <label class="check">
                     <input type="checkbox" name="proxyEnabled" />
@@ -88,6 +97,7 @@
                 <div id="overview-alerts" class="alerts"></div>
                 <div class="row-actions">
                   <button type="button" id="btn-save-overview" class="btn">保存配置</button>
+                  <button type="button" id="btn-toggle-project-2" class="btn btn-ghost">关闭项目</button>
                 </div>
                 <p class="hint">
                   匹配：<strong>动态接口（当前场景）</strong> → 代码 Router → 上游 / 404。
@@ -303,6 +313,40 @@
         </main>
       </div>
     </div>
+    <!-- 新建项目弹层 -->
+    <div id="new-project-modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close-modal></div>
+      <div class="modal-card" role="dialog" aria-labelledby="new-project-title">
+        <div class="modal-head">
+          <h3 id="new-project-title">新建项目</h3>
+          <button type="button" class="btn btn-ghost btn-sm" data-close-modal>关闭</button>
+        </div>
+        <form id="new-project-form" class="form-stack">
+          <div class="field">
+            <label for="np-name">名称</label>
+            <input id="np-name" name="name" type="text" required placeholder="例如：订单服务" />
+          </div>
+          <div class="field">
+            <label for="np-slug">Slug（唯一标识）</label>
+            <input id="np-slug" name="slug" type="text" required pattern="[a-z0-9]+(-[a-z0-9]+)*" placeholder="order-service" />
+            <span class="hint">小写字母、数字、连字符</span>
+          </div>
+          <div class="field">
+            <label for="np-port">端口（可空，自动分配）</label>
+            <input id="np-port" name="port" type="number" min="1" max="65535" placeholder="自动" />
+          </div>
+          <div class="field">
+            <label for="np-desc">描述</label>
+            <input id="np-desc" name="description" type="text" placeholder="可选" />
+          </div>
+          <div class="row-actions">
+            <button type="submit" class="btn">创建并启动</button>
+            <button type="button" class="btn btn-ghost" data-close-modal>取消</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>

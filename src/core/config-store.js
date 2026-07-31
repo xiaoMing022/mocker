@@ -9,11 +9,19 @@ const configTmpPath = path.join(configDir, "projects.json.tmp")
 
 const DEFAULT_ADMIN_PORT = 4000
 const DEFAULT_PORT_START = 4001
+const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 /**
- * @typedef {{ enabled: boolean, port: number, proxy: { enabled: boolean, target: string } }} RuntimeConfig
+ * @typedef {{
+ *   name?: string,
+ *   description?: string,
+ *   enabled: boolean,
+ *   port: number,
+ *   proxy: { enabled: boolean, target: string },
+ *   managed?: boolean
+ * }} RuntimeConfig
  * @typedef {{ adminPort: number, projects: Record<string, RuntimeConfig> }} AppConfig
- * @typedef {{ slug: string, defaultPort?: number }} CodeProjectMeta
+ * @typedef {{ slug: string, name?: string, defaultPort?: number }} CodeProjectMeta
  */
 
 export function getConfigPath() {
@@ -36,7 +44,6 @@ export function loadConfig(codeProjects) {
 }
 
 /**
- * Effective admin listen port: env override does not rewrite the config file.
  * @param {AppConfig} config
  */
 export function resolveAdminPort(config) {
@@ -49,9 +56,6 @@ export function resolveAdminPort(config) {
   return config.adminPort || DEFAULT_ADMIN_PORT
 }
 
-/**
- * @returns {AppConfig}
- */
 function readConfigFile() {
   if (!existsSync(configPath)) {
     return {
@@ -97,19 +101,23 @@ function normalizeAppConfig(parsed) {
  * @param {number} fallbackPort
  * @returns {RuntimeConfig}
  */
-function normalizeRuntimeConfig(value, fallbackPort) {
+export function normalizeRuntimeConfig(value, fallbackPort) {
   const proxySource = value?.proxy && typeof value.proxy === "object" ? value.proxy : {}
   return {
+    name: typeof value?.name === "string" ? value.name.trim() : undefined,
+    description: typeof value?.description === "string" ? value.description : undefined,
     enabled: value?.enabled !== false,
     port: toPort(value?.port, fallbackPort),
     proxy: {
       enabled: Boolean(proxySource.enabled),
       target: typeof proxySource.target === "string" ? proxySource.target.trim() : "",
     },
+    managed: Boolean(value?.managed),
   }
 }
 
 /**
+ * Keep code projects + console-managed (and any extra config) projects.
  * @param {AppConfig} raw
  * @param {CodeProjectMeta[]} codeProjects
  */
@@ -119,48 +127,69 @@ function mergeWithCodeProjects(raw, codeProjects) {
   const projects = {}
   let dirty = !existsSync(configPath)
 
-  for (const [slug] of Object.entries(raw.projects)) {
-    if (!codeProjects.some((p) => p.slug === slug)) {
-      console.warn(`[config] Ignoring unknown project slug in config: ${slug}`)
+  const codeSlugs = new Set(codeProjects.map((p) => p.slug))
+
+  // 1) Console / config-defined projects (including managed)
+  for (const [slug, existing] of Object.entries(raw.projects)) {
+    if (codeSlugs.has(slug)) continue
+    projects[slug] = {
+      ...existing,
+      // config-only projects are always managed from console
+      managed: existing.managed !== false ? true : true,
     }
+    if (existing.enabled) usedPorts.add(existing.port)
   }
 
+  // 2) Code-registered projects
   for (const code of codeProjects) {
     const existing = raw.projects[code.slug]
     if (existing) {
-      projects[code.slug] = existing
+      projects[code.slug] = {
+        ...existing,
+        managed: false,
+        name: existing.name || code.name,
+        description:
+          existing.description !== undefined ? existing.description : undefined,
+      }
       if (existing.enabled) usedPorts.add(existing.port)
       continue
     }
 
     const port =
-      toPort(code.defaultPort, 0) ||
-      allocatePort(usedPorts, DEFAULT_PORT_START)
+      toPort(code.defaultPort, 0) || allocatePort(usedPorts, DEFAULT_PORT_START)
     usedPorts.add(port)
     projects[code.slug] = {
+      name: code.name,
+      description: "",
       enabled: true,
       port,
       proxy: { enabled: false, target: "" },
+      managed: false,
     }
     dirty = true
   }
 
-  const adminPort = raw.adminPort
-  const next = { adminPort, projects }
-
-  // Detect missing keys that should be persisted for console visibility
-  if (Object.keys(projects).length !== Object.keys(raw.projects).filter((s) => projects[s]).length) {
-    dirty = true
+  // Detect if managed flag / missing code entries need write-back
+  for (const slug of Object.keys(projects)) {
+    const before = raw.projects[slug]
+    const after = projects[slug]
+    if (!before) {
+      dirty = true
+      break
+    }
+    if (Boolean(before.managed) !== Boolean(after.managed) && codeSlugs.has(slug)) {
+      dirty = true
+    }
   }
 
-  return { config: next, dirty }
+  return { config: { adminPort: raw.adminPort, projects }, dirty }
 }
 
 /**
  * @param {Set<number>} usedPorts
  * @param {number} start
  */
-function allocatePort(usedPorts, start) {
+export function allocatePort(usedPorts, start = DEFAULT_PORT_START) {
   let port = start
   while (usedPorts.has(port)) port += 1
   return port
@@ -184,14 +213,34 @@ export function saveConfig(config) {
     mkdirSync(configDir, { recursive: true })
   }
 
-  const payload = `${JSON.stringify(config, null, 2)}\n`
+  // Persist a clean shape
+  /** @type {AppConfig} */
+  const out = {
+    adminPort: config.adminPort,
+    projects: {},
+  }
+  for (const [slug, p] of Object.entries(config.projects)) {
+    out.projects[slug] = {
+      name: p.name || undefined,
+      description: p.description || undefined,
+      enabled: p.enabled,
+      port: p.port,
+      proxy: {
+        enabled: p.proxy.enabled,
+        target: p.proxy.target,
+      },
+      managed: p.managed ? true : undefined,
+    }
+  }
+
+  const payload = `${JSON.stringify(out, null, 2)}\n`
   writeFileSync(configTmpPath, payload, "utf8")
   renameSync(configTmpPath, configPath)
 }
 
 /**
  * @param {string} slug
- * @param {Partial<RuntimeConfig> & { proxy?: Partial<RuntimeConfig["proxy"]> }} patch
+ * @param {Partial<RuntimeConfig> & { proxy?: Partial<RuntimeConfig["proxy"]>, name?: string, description?: string }} patch
  * @param {AppConfig} fullConfig
  * @param {string[]} knownSlugs
  */
@@ -207,6 +256,14 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
 
   /** @type {RuntimeConfig} */
   const next = {
+    name:
+      patch.name !== undefined
+        ? String(patch.name).trim()
+        : current.name,
+    description:
+      patch.description !== undefined
+        ? String(patch.description)
+        : current.description,
     enabled: patch.enabled !== undefined ? Boolean(patch.enabled) : current.enabled,
     port: patch.port !== undefined ? Number(patch.port) : current.port,
     proxy: {
@@ -219,6 +276,7 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
           ? String(patch.proxy.target).trim()
           : current.proxy.target,
     },
+    managed: current.managed,
   }
 
   /** @type {string[]} */
@@ -235,18 +293,13 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
 
   for (const [otherSlug, other] of Object.entries(fullConfig.projects)) {
     if (otherSlug === slug) continue
-    if (!other.enabled && !next.enabled) continue
     if (other.enabled && next.enabled && other.port === next.port) {
       errors.push(`port ${next.port} conflicts with project "${otherSlug}"`)
     }
   }
 
-  if (next.proxy.target) {
-    if (!isValidHttpUrl(next.proxy.target)) {
-      errors.push("proxy.target must be an absolute http: or https: URL")
-    }
-  } else if (next.proxy.enabled) {
-    // allowed: enabled with empty target → runtime treats proxy as off + warning
+  if (next.proxy.target && !isValidHttpUrl(next.proxy.target)) {
+    errors.push("proxy.target must be an absolute http: or https: URL")
   }
 
   if (errors.length > 0) {
@@ -254,6 +307,80 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
   }
 
   return { ok: true, errors: [], value: next }
+}
+
+/**
+ * Validate payload for creating a new console-managed project.
+ * @param {unknown} body
+ * @param {AppConfig} fullConfig
+ * @param {string[]} codeSlugs
+ */
+export function validateCreateProject(body, fullConfig, codeSlugs) {
+  /** @type {string[]} */
+  const errors = []
+  const raw = body && typeof body === "object" ? body : {}
+
+  const slug = String(raw.slug || "")
+    .trim()
+    .toLowerCase()
+  const name = String(raw.name || "").trim()
+  const description = String(raw.description || "").trim()
+
+  if (!slug || !SLUG_RE.test(slug)) {
+    errors.push("slug 需为小写字母/数字/连字符，如 my-app")
+  }
+  if (fullConfig.projects[slug] || codeSlugs.includes(slug)) {
+    errors.push(`项目已存在: ${slug}`)
+  }
+  if (!name) {
+    errors.push("name 必填")
+  }
+
+  const usedPorts = new Set([resolveAdminPort(fullConfig)])
+  for (const p of Object.values(fullConfig.projects)) {
+    if (p.enabled) usedPorts.add(p.port)
+  }
+
+  let port =
+    raw.port !== undefined && raw.port !== null && raw.port !== ""
+      ? Number(raw.port)
+      : allocatePort(usedPorts, DEFAULT_PORT_START)
+
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    errors.push("port must be an integer between 1 and 65535")
+  } else if (usedPorts.has(port)) {
+    errors.push(`port ${port} 已被占用`)
+  }
+
+  const proxyEnabled = Boolean(raw.proxy?.enabled)
+  const proxyTarget =
+    typeof raw.proxy?.target === "string" ? raw.proxy.target.trim() : ""
+  if (proxyTarget && !isValidHttpUrl(proxyTarget)) {
+    errors.push("proxy.target must be an absolute http: or https: URL")
+  }
+
+  if (errors.length) {
+    return { ok: false, errors, value: null }
+  }
+
+  /** @type {RuntimeConfig} */
+  const value = {
+    name,
+    description,
+    enabled: raw.enabled !== false,
+    port,
+    proxy: {
+      enabled: proxyEnabled,
+      target: proxyTarget,
+    },
+    managed: true,
+  }
+
+  return { ok: true, errors: [], value: { slug, runtime: value } }
+}
+
+export function isValidSlug(slug) {
+  return typeof slug === "string" && SLUG_RE.test(slug)
 }
 
 /**
@@ -275,3 +402,5 @@ export function isValidHttpUrl(value) {
 export function isProxyActive(enabled, target) {
   return Boolean(enabled && target && isValidHttpUrl(target))
 }
+
+export { DEFAULT_PORT_START, SLUG_RE }

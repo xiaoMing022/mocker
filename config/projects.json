@@ -2,6 +2,7 @@
   "adminPort": 4000,
   "projects": {
     "tts-leaderboard": {
+      "name": "TTS Leaderboard",
       "enabled": true,
       "port": 4001,
       "proxy": {

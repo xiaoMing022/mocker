@@ -879,3 +879,71 @@ textarea:focus {
   min-height: 2.2rem;
   align-items: center;
 }
+
+.sidebar-actions {
+  padding: 0 0.5rem 0.5rem;
+}
+
+.sidebar-new {
+  width: 100%;
+  background: color-mix(in srgb, var(--accent) 18%, var(--panel-2));
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+}
+
+.sidebar-new:hover {
+  background: color-mix(in srgb, var(--accent) 28%, var(--panel-2));
+}
+
+.project-item.closed .name {
+  opacity: 0.75;
+}
+
+.project-item .badge-closed {
+  font-size: 0.65rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 0 0.3rem;
+  margin-left: 0.25rem;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+}
+
+.modal[hidden] {
+  display: none !important;
+}
+
+.modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: #00000066;
+}
+
+.modal-card {
+  position: relative;
+  width: min(420px, calc(100vw - 2rem));
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem 1.1rem 1.15rem;
+  box-shadow: 0 20px 50px #00000055;
+}
+
+.modal-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.85rem;
+}
+
+.modal-head h3 {
+  margin: 0;
+  font-size: 1.05rem;
+}

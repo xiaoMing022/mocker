@@ -27,6 +27,16 @@ export function registerAdminRoutes(app, { manager }) {
     res.json({ projects: manager.listProjects() })
   })
 
+  /** 控制台新建项目（无需写代码） */
+  app.post("/__mock/projects", async (req, res) => {
+    try {
+      const project = await manager.createProject(req.body ?? {})
+      res.status(201).json({ project })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
   app.get("/__mock/projects/:slug", (req, res) => {
     const project = manager.getProject(req.params.slug)
     if (!project) {
@@ -49,10 +59,40 @@ export function registerAdminRoutes(app, { manager }) {
     }
   })
 
+  /** 关闭项目（停用 + 释放端口） */
+  app.post("/__mock/projects/:slug/close", async (req, res) => {
+    try {
+      const project = await manager.closeProject(req.params.slug)
+      res.json({ project })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
+  /** 开启项目 */
+  app.post("/__mock/projects/:slug/open", async (req, res) => {
+    try {
+      const project = await manager.openProject(req.params.slug)
+      res.json({ project })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
   app.post("/__mock/projects/:slug/reload", async (req, res) => {
     try {
       const project = await manager.reloadProject(req.params.slug)
       res.json({ project })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
+  /** 删除控制台创建的项目（代码注册项目不可删） */
+  app.delete("/__mock/projects/:slug", async (req, res) => {
+    try {
+      const result = await manager.deleteProject(req.params.slug)
+      res.json(result)
     } catch (error) {
       sendError(res, error)
     }

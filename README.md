@@ -95,11 +95,19 @@ src/
       fixtures/                 # 可选：seed 用 JSON
 ```
 
-## 添加项目
+## 添加 / 关闭项目
+
+### 控制台（推荐）
+
+- 左侧 **+ 新建项目**：填写名称、slug、端口 → 自动创建并启动（纯配置，无需写代码）
+- **关闭项目**：停止监听并释放端口（配置保留，可再开启）
+- **删除项目**：仅限控制台创建的项目；代码注册项目不可删，只能关闭
+
+### 代码注册（可选，用于复杂 createRouter）
 
 1. `src/projects/<slug>/index.js` 导出 `{ slug, name, description, defaultPort, createRouter }`
 2. 在 `src/projects/index.js` 注册
-3. 重启后控制台可见；在「接口 Mock」里加路由，或自写 seed 脚本
+3. 重启后控制台可见
 
 ## TTS Leaderboard
 
