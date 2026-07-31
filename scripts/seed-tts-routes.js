@@ -9,9 +9,10 @@ import { randomUUID } from "node:crypto"
 import { fileURLToPath } from "node:url"
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..")
-const fixturesDir = path.join(root, "src/projects/tts-leaderboard/fixtures")
+const fixturesDir = path.join(root, "fixtures/tts-leaderboard")
 const outDir = path.join(root, "config/projects/tts-leaderboard")
 const outFile = path.join(outDir, "routes.json")
+const projectsConfigPath = path.join(root, "config/projects.json")
 
 function read(...segs) {
   return JSON.parse(readFileSync(path.join(fixturesDir, ...segs), "utf8"))
@@ -225,6 +226,42 @@ writeFileSync(
   outFile,
   `${JSON.stringify({ version: 2, routes }, null, 2)}\n`,
 )
+
+// Ensure project exists in config as console-managed (same as UI-created projects)
+const defaultProject = {
+  name: "TTS Leaderboard",
+  description: "TTS 排行榜 Web / Admin Mock（控制台管理）",
+  enabled: true,
+  port: 4001,
+  proxy: { enabled: false, target: "" },
+  managed: true,
+}
+let projectsConfig = { adminPort: 4000, projects: {} }
+if (existsSync(projectsConfigPath)) {
+  try {
+    projectsConfig = JSON.parse(readFileSync(projectsConfigPath, "utf8"))
+  } catch {
+    /* keep default */
+  }
+}
+if (!projectsConfig.projects) projectsConfig.projects = {}
+const existing = projectsConfig.projects["tts-leaderboard"] || {}
+projectsConfig.projects["tts-leaderboard"] = {
+  ...defaultProject,
+  ...existing,
+  name: existing.name || defaultProject.name,
+  description: existing.description || defaultProject.description,
+  managed: true,
+  proxy: {
+    enabled: Boolean(existing.proxy?.enabled),
+    target: existing.proxy?.target || "",
+  },
+  enabled: existing.enabled !== false,
+  port: existing.port || defaultProject.port,
+}
+writeFileSync(projectsConfigPath, `${JSON.stringify(projectsConfig, null, 2)}\n`)
+
 console.log(
   `Seeded ${routes.length} interfaces (${routes.reduce((n, r) => n + r.scenarios.length, 0)} scenarios) → ${path.relative(root, outFile)}`,
 )
+console.log(`Project config → ${path.relative(root, projectsConfigPath)} (managed: true)`)

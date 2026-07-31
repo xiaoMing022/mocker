@@ -3,12 +3,14 @@
   "projects": {
     "tts-leaderboard": {
       "name": "TTS Leaderboard",
+      "description": "TTS 排行榜 Web / Admin Mock（控制台管理）",
       "enabled": true,
       "port": 4001,
       "proxy": {
         "enabled": false,
         "target": ""
-      }
+      },
+      "managed": true
     }
   }
 }
