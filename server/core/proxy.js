@@ -1,6 +1,7 @@
 import { createProxyMiddleware } from "http-proxy-middleware"
 
 import { isProxyActive, isValidHttpUrl } from "./config-store.js"
+import { applyCorsHeaders } from "./cors.js"
 import { resolveProxyTarget } from "./match.js"
 
 /**
@@ -45,10 +46,13 @@ export function createProxyFallback({ slug, enabled, target, rules = [] }) {
         proxyRes(proxyRes, reqInner, resInner) {
           resInner.locals.mockSource = "proxy"
           resInner.locals.proxyTarget = resolvedTarget
+          // Upstream CORS targets the real host; rewrite for browser → mock.
+          applyCorsHeaders(reqInner, resInner, proxyRes)
         },
         error(err, reqInner, resInner) {
           if (resInner.headersSent) return
           resInner.locals.mockSource = "proxy"
+          applyCorsHeaders(reqInner, resInner)
           resInner.status(502).json({
             code: 502,
             message: `Proxy error for project "${slug}": ${err.message}`,

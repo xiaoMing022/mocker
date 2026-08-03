@@ -1,5 +1,6 @@
 import express from "express"
 
+import { corsMiddleware } from "./cors.js"
 import { createDynamicRoutesMiddleware } from "./dynamic-routes.js"
 import { pickLogHeaders, truncateJson } from "./match.js"
 import { createProxyFallback } from "./proxy.js"
@@ -87,25 +88,4 @@ export function createProjectApp({ project, runtime, getRoutes, onRequestLog }) 
   )
 
   return app
-}
-
-function corsMiddleware(req, res, next) {
-  res.setHeader("Access-Control-Allow-Origin", process.env.CORS_ORIGIN ?? "*")
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    ["Content-Type", "Authorization", "X-Session-Token", "X-Requested-With"].join(
-      ", ",
-    ),
-  )
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-  )
-
-  if (req.method === "OPTIONS") {
-    res.status(204).send()
-    return
-  }
-
-  next()
 }
