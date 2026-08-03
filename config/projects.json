@@ -11,6 +11,17 @@
         "target": ""
       },
       "managed": true
+    },
+    "soulx-platform": {
+      "name": "SoulX Platform",
+      "description": "SoulX：仅 mock POST /api/commerce/order/status；未命中接口 proxy 到 test-soulx",
+      "enabled": true,
+      "port": 4002,
+      "proxy": {
+        "enabled": true,
+        "target": "https://test-soulx.soulapp-inc.cn"
+      },
+      "managed": true
     }
   }
 }

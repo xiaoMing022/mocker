@@ -1,0 +1,220 @@
+{
+  "version": 2,
+  "routes": [
+    {
+      "id": "a1b2c3d4-e5f6-7890-ab12-cd34ef567890",
+      "name": "查询订单支付状态",
+      "method": "POST",
+      "path": "/api/commerce/order/status",
+      "enabled": true,
+      "activeScenarioId": "status-exception",
+      "scenarios": [
+        {
+          "id": "status-paying",
+          "name": "支付中 PAYING",
+          "statusCode": 200,
+          "delayMs": 100,
+          "response": {
+            "code": 0,
+            "message": "success",
+            "success": true,
+            "data": {
+              "orderNo": "MOCK_ORDER_PAYING",
+              "status": "PAYING"
+            }
+          },
+          "headers": {},
+          "match": null,
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "status-init",
+          "name": "初始化 INIT",
+          "statusCode": 200,
+          "delayMs": 100,
+          "response": {
+            "code": 0,
+            "message": "success",
+            "success": true,
+            "data": {
+              "orderNo": "MOCK_ORDER_INIT",
+              "status": "INIT"
+            }
+          },
+          "headers": {},
+          "match": null,
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "status-paid",
+          "name": "已支付 PAID",
+          "statusCode": 200,
+          "delayMs": 100,
+          "response": {
+            "code": 0,
+            "message": "success",
+            "success": true,
+            "data": {
+              "orderNo": "MOCK_ORDER_PAID",
+              "status": "PAID"
+            }
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "orderNo": "MOCK_ORDER_PAID"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "status-finished",
+          "name": "已完成 FINISHED",
+          "statusCode": 200,
+          "delayMs": 100,
+          "response": {
+            "code": 0,
+            "message": "success",
+            "success": true,
+            "data": {
+              "orderNo": "MOCK_ORDER_FINISHED",
+              "status": "FINISHED"
+            }
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "orderNo": "MOCK_ORDER_FINISHED"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "status-closed",
+          "name": "已关闭 CLOSED",
+          "statusCode": 200,
+          "delayMs": 100,
+          "response": {
+            "code": 0,
+            "message": "success",
+            "success": true,
+            "data": {
+              "orderNo": "MOCK_ORDER_CLOSED",
+              "status": "CLOSED"
+            }
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "orderNo": "MOCK_ORDER_CLOSED"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "status-exception",
+          "name": "异常 EXCEPTION",
+          "statusCode": 200,
+          "delayMs": 100,
+          "response": {
+            "code": 0,
+            "message": "success",
+            "success": true,
+            "data": {
+              "orderNo": "MOCK_ORDER_EXCEPTION",
+              "status": "EXCEPTION"
+            }
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "orderNo": "MOCK_ORDER_EXCEPTION"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "status-refunding",
+          "name": "退款中 REFUNDING",
+          "statusCode": 200,
+          "delayMs": 100,
+          "response": {
+            "code": 0,
+            "message": "success",
+            "success": true,
+            "data": {
+              "orderNo": "MOCK_ORDER_REFUNDING",
+              "status": "REFUNDING"
+            }
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "orderNo": "MOCK_ORDER_REFUNDING"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "status-refunded",
+          "name": "已退款 REFUNDED",
+          "statusCode": 200,
+          "delayMs": 100,
+          "response": {
+            "code": 0,
+            "message": "success",
+            "success": true,
+            "data": {
+              "orderNo": "MOCK_ORDER_REFUNDED",
+              "status": "REFUNDED"
+            }
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "orderNo": "MOCK_ORDER_REFUNDED"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "status-not-found",
+          "name": "订单不存在 code=6002",
+          "statusCode": 200,
+          "delayMs": 100,
+          "response": {
+            "code": 6002,
+            "message": "订单不存在",
+            "success": false,
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "orderNo": "MOCK_ORDER_NOT_FOUND"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        }
+      ],
+      "note": "入参 body: { orderNo }。本项目仅 mock 本接口；其余 API 由项目 proxy 转发至 https://test-soulx.soulapp-inc.cn。默认场景 PAYING；可在控制台切换，或用 MOCK_ORDER_PAID/CLOSED/EXCEPTION 等 orderNo 命中 match。前端需把 PUBLIC_APP_SOUL_X_URL 指到本项目地址（如 http://localhost:4002）。",
+      "requestExample": {
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "orderNo": "MOCK_ORDER_PAYING"
+        }
+      }
+    }
+  ]
+}
