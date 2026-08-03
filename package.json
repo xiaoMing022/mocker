@@ -1,15 +1,71 @@
 {
   "name": "mock-server",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
+  "main": "electron/main.js",
   "scripts": {
-    "dev": "node --watch src/server.js",
+    "dev": "concurrently -k -n server,console -c blue,magenta \"npm run dev:server\" \"npm run dev:console\"",
+    "dev:server": "node --watch src/server.js",
+    "dev:console": "npm run dev --prefix console",
+    "build": "npm run build --prefix console && touch public/console/.gitkeep",
     "start": "node src/server.js",
-    "seed:tts": "node scripts/seed-tts-routes.js"
+    "electron": "npm run build && electron .",
+    "electron:dev": "concurrently -k -n console,electron -c magenta,blue \"npm run dev:console\" \"electron . --dev-renderer\"",
+    "electron:only": "electron .",
+    "dist:mac": "npm run build && node scripts/ensure-console-built.mjs && electron-builder --mac",
+    "dist:dir": "npm run build && node scripts/ensure-console-built.mjs && electron-builder --mac --dir",
+    "test": "node --test test/**/*.test.js",
+    "postinstall": "npm install --prefix console"
   },
   "dependencies": {
     "express": "^5.2.0",
     "http-proxy-middleware": "^3.0.5"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.4",
+    "electron": "^43.2.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "dev.mockserver.app",
+    "productName": "Mock Server",
+    "copyright": "Copyright © Mock Server contributors",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "package.json",
+      "electron/**/*",
+      "src/**/*",
+      "public/console/**/*",
+      "!**/*.map",
+      "!console/**/*",
+      "!test/**/*",
+      "!docs/**/*",
+      "!config/**/*"
+    ],
+    "asar": true,
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    }
   }
 }

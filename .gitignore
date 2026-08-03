@@ -1,6 +1,29 @@
+# Dependencies
 node_modules/
+console/node_modules/
+
+# Logs & OS
 npm-debug.log*
 .DS_Store
+
+# Temp / runtime
 *.tmp
 config/projects.json.tmp
 config/projects/**/*.tmp
+
+# Console build output (run `npm run build`)
+console/dist/
+public/console/*
+!public/console/.gitkeep
+
+# Editor
+.vscode/
+.idea/
+*.sw?
+
+# Electron
+dist-electron/
+out/
+release/
+dist/
+*.dmg
