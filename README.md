@@ -233,4 +233,4 @@ npm test
 
 ## License
 
-Private / 按仓库设置。
+[MIT](./LICENSE) © 2026 xiaoMing022
