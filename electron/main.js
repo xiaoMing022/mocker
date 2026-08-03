@@ -10,7 +10,7 @@ import {
 } from "electron"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { setPaths } from "../src/core/paths.js"
+import { getConfigRoot, setPaths } from "../src/core/paths.js"
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const rootDir = path.resolve(__dirname, "..")
@@ -79,6 +79,12 @@ function buildTrayMenu() {
       enabled: Boolean(runtime?.adminUrl),
       click: () => {
         if (runtime?.adminUrl) clipboard.writeText(runtime.adminUrl)
+      },
+    },
+    {
+      label: "打开配置目录",
+      click: () => {
+        void shell.openPath(getConfigRoot())
       },
     },
     { type: "separator" },
