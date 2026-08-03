@@ -1,23 +1,30 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { fileURLToPath } from "node:url"
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
-const configDir = path.join(rootDir, "config")
-const configPath = path.join(configDir, "projects.json")
-const configTmpPath = path.join(configDir, "projects.json.tmp")
+import { getConfigRoot } from "./paths.js"
+
+function configDir() {
+  return getConfigRoot()
+}
+function configPath() {
+  return path.join(getConfigRoot(), "projects.json")
+}
+function configTmpPath() {
+  return path.join(getConfigRoot(), "projects.json.tmp")
+}
 
 const DEFAULT_ADMIN_PORT = 4000
 const DEFAULT_PORT_START = 4001
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 /**
+ * @typedef {{ pathPrefix: string, target?: string, enabled?: boolean }} ProxyRule
  * @typedef {{
  *   name?: string,
  *   description?: string,
  *   enabled: boolean,
  *   port: number,
- *   proxy: { enabled: boolean, target: string },
+ *   proxy: { enabled: boolean, target: string, rules: ProxyRule[] },
  *   managed?: boolean
  * }} RuntimeConfig
  * @typedef {{ adminPort: number, projects: Record<string, RuntimeConfig> }} AppConfig
@@ -25,7 +32,7 @@ const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
  */
 
 export function getConfigPath() {
-  return configPath
+  return configPath()
 }
 
 /**
@@ -36,7 +43,7 @@ export function loadConfig(codeProjects) {
   const raw = readConfigFile()
   const { config, dirty } = mergeWithCodeProjects(raw, codeProjects)
 
-  if (!existsSync(configPath) || dirty) {
+  if (!existsSync(configPath()) || dirty) {
     saveConfig(config)
   }
 
@@ -57,7 +64,7 @@ export function resolveAdminPort(config) {
 }
 
 function readConfigFile() {
-  if (!existsSync(configPath)) {
+  if (!existsSync(configPath())) {
     return {
       adminPort: DEFAULT_ADMIN_PORT,
       projects: {},
@@ -65,11 +72,11 @@ function readConfigFile() {
   }
 
   try {
-    const parsed = JSON.parse(readFileSync(configPath, "utf8"))
+    const parsed = JSON.parse(readFileSync(configPath(), "utf8"))
     return normalizeAppConfig(parsed)
   } catch (error) {
     console.warn(
-      `[config] Failed to parse ${configPath}: ${error.message}. Using defaults.`,
+      `[config] Failed to parse ${configPath()}: ${error.message}. Using defaults.`,
     )
     return {
       adminPort: DEFAULT_ADMIN_PORT,
@@ -111,9 +118,33 @@ export function normalizeRuntimeConfig(value, fallbackPort) {
     proxy: {
       enabled: Boolean(proxySource.enabled),
       target: typeof proxySource.target === "string" ? proxySource.target.trim() : "",
+      rules: normalizeProxyRules(proxySource.rules),
     },
     managed: Boolean(value?.managed),
   }
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {ProxyRule[]}
+ */
+export function normalizeProxyRules(raw) {
+  if (!Array.isArray(raw)) return []
+  /** @type {ProxyRule[]} */
+  const rules = []
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue
+    const pathPrefix = String(item.pathPrefix || "").trim()
+    if (!pathPrefix.startsWith("/")) continue
+    const target =
+      typeof item.target === "string" ? item.target.trim() : ""
+    rules.push({
+      pathPrefix,
+      target: target || undefined,
+      enabled: item.enabled !== false,
+    })
+  }
+  return rules
 }
 
 /**
@@ -125,7 +156,7 @@ function mergeWithCodeProjects(raw, codeProjects) {
   const usedPorts = new Set([raw.adminPort])
   /** @type {Record<string, RuntimeConfig>} */
   const projects = {}
-  let dirty = !existsSync(configPath)
+  let dirty = !existsSync(configPath())
 
   const codeSlugs = new Set(codeProjects.map((p) => p.slug))
 
@@ -135,7 +166,7 @@ function mergeWithCodeProjects(raw, codeProjects) {
     projects[slug] = {
       ...existing,
       // config-only projects are always managed from console
-      managed: existing.managed !== false ? true : true,
+      managed: true,
     }
     if (existing.enabled) usedPorts.add(existing.port)
   }
@@ -163,7 +194,7 @@ function mergeWithCodeProjects(raw, codeProjects) {
       description: "",
       enabled: true,
       port,
-      proxy: { enabled: false, target: "" },
+      proxy: { enabled: false, target: "", rules: [] },
       managed: false,
     }
     dirty = true
@@ -209,8 +240,8 @@ function toPort(value, fallback) {
  * @param {AppConfig} config
  */
 export function saveConfig(config) {
-  if (!existsSync(configDir)) {
-    mkdirSync(configDir, { recursive: true })
+  if (!existsSync(configDir())) {
+    mkdirSync(configDir(), { recursive: true })
   }
 
   // Persist a clean shape
@@ -228,14 +259,15 @@ export function saveConfig(config) {
       proxy: {
         enabled: p.proxy.enabled,
         target: p.proxy.target,
+        rules: p.proxy.rules?.length ? p.proxy.rules : undefined,
       },
       managed: p.managed ? true : undefined,
     }
   }
 
   const payload = `${JSON.stringify(out, null, 2)}\n`
-  writeFileSync(configTmpPath, payload, "utf8")
-  renameSync(configTmpPath, configPath)
+  writeFileSync(configTmpPath(), payload, "utf8")
+  renameSync(configTmpPath(), configPath())
 }
 
 /**
@@ -253,6 +285,11 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
   if (!current) {
     return { ok: false, errors: [`No runtime config for project: ${slug}`], value: null }
   }
+
+  const nextRules =
+    patch.proxy?.rules !== undefined
+      ? normalizeProxyRules(patch.proxy.rules)
+      : current.proxy.rules || []
 
   /** @type {RuntimeConfig} */
   const next = {
@@ -275,6 +312,7 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
         patch.proxy?.target !== undefined
           ? String(patch.proxy.target).trim()
           : current.proxy.target,
+      rules: nextRules,
     },
     managed: current.managed,
   }
@@ -300,6 +338,12 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
 
   if (next.proxy.target && !isValidHttpUrl(next.proxy.target)) {
     errors.push("proxy.target must be an absolute http: or https: URL")
+  }
+
+  for (const rule of next.proxy.rules || []) {
+    if (rule.target && !isValidHttpUrl(rule.target)) {
+      errors.push(`proxy rule ${rule.pathPrefix}: target must be http(s) URL`)
+    }
   }
 
   if (errors.length > 0) {
@@ -372,6 +416,7 @@ export function validateCreateProject(body, fullConfig, codeSlugs) {
     proxy: {
       enabled: proxyEnabled,
       target: proxyTarget,
+      rules: normalizeProxyRules(raw.proxy?.rules),
     },
     managed: true,
   }

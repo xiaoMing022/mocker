@@ -1,22 +1,53 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { randomUUID } from "node:crypto"
-import { fileURLToPath } from "node:url"
 
-const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
-const projectsConfigDir = path.join(rootDir, "config", "projects")
+import { getConfigRoot } from "./paths.js"
+
+function projectsConfigDir() {
+  return path.join(getConfigRoot(), "projects")
+}
 
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
 
 /**
+ * @typedef {{
+ *   headers?: Record<string, string>,
+ *   query?: Record<string, string>,
+ *   body?: Record<string, string>
+ * }} ScenarioMatch
+ *
+ * @typedef {{
+ *   event?: string,
+ *   data: unknown,
+ *   id?: string,
+ *   retry?: number,
+ *   delayMs?: number
+ * }} SseEvent
+ *
+ * @typedef {{
+ *   events: SseEvent[],
+ *   endWithDone: boolean,
+ *   keepAliveMs: number
+ * }} ScenarioStream
+ *
  * @typedef {{
  *   id: string,
  *   name: string,
  *   statusCode: number,
  *   delayMs: number,
  *   response: unknown,
- *   headers: Record<string, string>
+ *   headers: Record<string, string>,
+ *   match: ScenarioMatch | null,
+ *   mode: "json" | "sse",
+ *   stream: ScenarioStream | null
  * }} Scenario
+ *
+ * @typedef {{
+ *   headers?: Record<string, string>,
+ *   query?: Record<string, string>,
+ *   body?: unknown
+ * }} RequestExample
  *
  * @typedef {{
  *   id: string,
@@ -26,12 +57,13 @@ const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
  *   enabled: boolean,
  *   activeScenarioId: string,
  *   scenarios: Scenario[],
- *   note: string
+ *   note: string,
+ *   requestExample: RequestExample | null
  * }} DynamicRoute
  */
 
 export function getRoutesPath(slug) {
-  return path.join(projectsConfigDir, slug, "routes.json")
+  return path.join(projectsConfigDir(), slug, "routes.json")
 }
 
 /**
@@ -62,7 +94,7 @@ export function loadRoutes(slug) {
  * @param {DynamicRoute[]} routes
  */
 export function saveRoutes(slug, routes) {
-  const dir = path.join(projectsConfigDir, slug)
+  const dir = path.join(projectsConfigDir(), slug)
   if (!existsSync(dir)) mkdirSync(dir, { recursive: true })
 
   const filePath = getRoutesPath(slug)
@@ -204,8 +236,12 @@ export function normalizeScenario(input) {
     }
   }
 
+  const mode = input.mode === "sse" ? "sse" : "json"
+  const stream = mode === "sse" ? normalizeStream(input.stream) : null
+
+  const response = input.response === undefined ? {} : input.response
   try {
-    JSON.stringify(input.response === undefined ? {} : input.response)
+    JSON.stringify(response)
   } catch {
     return null
   }
@@ -218,9 +254,139 @@ export function normalizeScenario(input) {
         ? statusCode
         : 200,
     delayMs: Number.isFinite(delayMs) && delayMs >= 0 ? Math.min(delayMs, 60_000) : 0,
-    response: input.response === undefined ? {} : input.response,
+    response,
     headers,
+    match: normalizeMatch(input.match),
+    mode,
+    stream,
   }
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {ScenarioStream}
+ */
+function normalizeStream(raw) {
+  const src = raw && typeof raw === "object" ? raw : {}
+  /** @type {SseEvent[]} */
+  const events = []
+  if (Array.isArray(src.events)) {
+    for (const item of src.events) {
+      const evt = normalizeSseEvent(item)
+      if (evt) events.push(evt)
+    }
+  }
+  const keepAliveRaw = Number(src.keepAliveMs ?? 0)
+  const keepAliveMs =
+    Number.isFinite(keepAliveRaw) && keepAliveRaw > 0
+      ? Math.min(Math.floor(keepAliveRaw), 60_000)
+      : 0
+  return {
+    events,
+    endWithDone: Boolean(src.endWithDone),
+    keepAliveMs,
+  }
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {SseEvent | null}
+ */
+function normalizeSseEvent(raw) {
+  if (!raw || typeof raw !== "object") return null
+  /** @type {SseEvent} */
+  const evt = { data: raw.data === undefined ? "" : raw.data }
+  try {
+    JSON.stringify(evt.data)
+  } catch {
+    evt.data = String(raw.data)
+  }
+  if (raw.event != null && String(raw.event).trim()) {
+    evt.event = String(raw.event).trim()
+  }
+  if (raw.id != null && String(raw.id).trim()) {
+    evt.id = String(raw.id).trim()
+  }
+  if (raw.retry != null && Number.isFinite(Number(raw.retry))) {
+    evt.retry = Math.floor(Number(raw.retry))
+  }
+  const d = Number(raw.delayMs ?? 0)
+  if (Number.isFinite(d) && d > 0) {
+    evt.delayMs = Math.min(Math.floor(d), 60_000)
+  }
+  return evt
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {ScenarioMatch | null}
+ */
+function normalizeMatch(raw) {
+  if (!raw || typeof raw !== "object") return null
+  /** @type {ScenarioMatch} */
+  const match = {}
+  if (raw.headers && typeof raw.headers === "object") {
+    /** @type {Record<string, string>} */
+    const headers = {}
+    for (const [k, v] of Object.entries(raw.headers)) {
+      if (v != null && String(v).trim()) headers[k] = String(v)
+    }
+    if (Object.keys(headers).length) match.headers = headers
+  }
+  if (raw.query && typeof raw.query === "object") {
+    /** @type {Record<string, string>} */
+    const query = {}
+    for (const [k, v] of Object.entries(raw.query)) {
+      if (v != null && String(v).trim()) query[k] = String(v)
+    }
+    if (Object.keys(query).length) match.query = query
+  }
+  if (raw.body && typeof raw.body === "object" && !Array.isArray(raw.body)) {
+    /** @type {Record<string, string>} */
+    const body = {}
+    for (const [k, v] of Object.entries(raw.body)) {
+      if (v != null && String(v).trim() !== "") body[k] = String(v)
+    }
+    if (Object.keys(body).length) match.body = body
+  }
+  if (!match.headers && !match.query && !match.body) return null
+  return match
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {RequestExample | null}
+ */
+function normalizeRequestExample(raw) {
+  if (!raw || typeof raw !== "object") return null
+  /** @type {RequestExample} */
+  const ex = {}
+  if (raw.headers && typeof raw.headers === "object") {
+    /** @type {Record<string, string>} */
+    const headers = {}
+    for (const [k, v] of Object.entries(raw.headers)) {
+      if (typeof v === "string") headers[k] = v
+    }
+    if (Object.keys(headers).length) ex.headers = headers
+  }
+  if (raw.query && typeof raw.query === "object") {
+    /** @type {Record<string, string>} */
+    const query = {}
+    for (const [k, v] of Object.entries(raw.query)) {
+      if (v != null) query[k] = String(v)
+    }
+    if (Object.keys(query).length) ex.query = query
+  }
+  if (raw.body !== undefined) {
+    try {
+      JSON.stringify(raw.body)
+      ex.body = raw.body
+    } catch {
+      /* skip */
+    }
+  }
+  if (!ex.headers && !ex.query && ex.body === undefined) return null
+  return ex
 }
 
 /**
@@ -277,6 +443,7 @@ export function normalizeRoute(input) {
     activeScenarioId,
     scenarios,
     note: typeof input.note === "string" ? input.note : "",
+    requestExample: normalizeRequestExample(input.requestExample),
   }
 }
 
@@ -361,6 +528,10 @@ export function applyRoutePatch(current, patch) {
       patch.activeScenarioId !== undefined
         ? patch.activeScenarioId
         : current.activeScenarioId,
+    requestExample:
+      patch.requestExample !== undefined
+        ? patch.requestExample
+        : current.requestExample,
   }
 
   return normalizeRoute(merged)
