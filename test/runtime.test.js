@@ -2,7 +2,7 @@ import assert from "node:assert/strict"
 import http from "node:http"
 import { after, describe, it } from "node:test"
 
-import { startMockRuntime } from "../src/runtime.js"
+import { startMockRuntime } from "../server/runtime.js"
 
 function getFreePort() {
   return new Promise((resolve, reject) => {

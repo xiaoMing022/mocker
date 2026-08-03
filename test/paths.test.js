@@ -7,7 +7,7 @@ import {
   getPackageRoot,
   resetPathsForTests,
   setPaths,
-} from "../src/core/paths.js"
+} from "../server/core/paths.js"
 
 describe("paths", () => {
   afterEach(() => {

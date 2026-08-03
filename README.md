@@ -1,8 +1,15 @@
-# Mock Server
+# Mocker
 
-本地多项目 Mock 服务：每项目独立端口，控制台配置接口与场景，未命中可按规则转发上游。
+本地多项目 Mock 服务：每项目独立端口，Web / 桌面双入口配置接口与场景，未命中可按规则转发上游。
 
-控制台前端：**React + Vite + Ant Design**（源码 `console/`，构建到 `public/console/`）。
+仓库：https://github.com/xiaoMing022/mocker
+
+**双入口：**
+
+| 入口 | 说明 | 命令 |
+|------|------|------|
+| **Web** | 浏览器控制台 + 后台服务 | `npm run dev` / `npm start` |
+| **Desktop** | Electron 桌面壳（同一套 runtime） | `npm run desktop` / `npm run dist:mac` |
 
 业务项目均为**配置驱动**，与控制台「新建项目」同一套机制。
 
@@ -11,62 +18,52 @@
 ## 快速开始
 
 ```bash
-npm install          # 安装根目录 + console 依赖
-npm run build        # 构建控制台（npm start 需要）
-npm run dev          # 开发：API :4000 + 控制台 Vite :5173
+git clone git@github.com:xiaoMing022/mocker.git
+cd mocker
+npm install          # 根目录 + apps/web 依赖
+npm run build        # 构建 Web 控制台 → public/console/
+npm run dev          # Web 开发：API :4000 + Vite :5173
 ```
 
-| 入口 | 地址 |
-|------|------|
-| 控制台（开发） | http://localhost:5173 |
-| 控制台（生产） | http://localhost:4000（需先 `npm run build`） |
-| 桌面壳 Electron | `npm run electron`（内嵌同一套 runtime） |
+| 入口 | 地址 / 用法 |
+|------|-------------|
+| Web 控制台（开发） | http://localhost:5173 |
+| Web 控制台（生产） | http://localhost:4000（先 `npm run build`） |
+| 桌面端开发 | `npm run dev:desktop`（Vite HMR + Electron） |
+| 桌面端 | `npm run desktop` |
 
-仅后端 + 已构建控制台：
+仅服务端 + 已构建控制台：
 
 ```bash
 npm run build && npm start
 ```
 
-桌面应用（窗口 + 托盘，关窗不杀 Mock 端口）：
+### 桌面端
 
 ```bash
-npm run electron          # 构建控制台后启动
-npm run electron:dev      # Vite HMR + Electron（开发）
+npm run desktop          # 构建控制台后启动 Electron
+npm run dev:desktop      # 开发：Vite + Electron
+npm run dist:dir         # 产出可双击的 .app
+npm run dist:mac         # .app + .dmg + .zip
 ```
 
-### 打包 macOS 应用（可双击）
+**关闭行为：** 点击窗口关闭按钮会**退出应用**并释放全部 Mock 端口。若需后台继续提供 Mock，请用菜单栏 / 托盘中的 **「隐藏窗口（后台保持 Mock）」**。
+
+打包产物在 `release/`（如 `release/mac-arm64/Mock Server.app`），该目录已被 gitignore，不会提交。
+
+**首次打开未签名包：** Finder **右键 → 打开**，或：
 
 ```bash
-npm run dist:mac          # 控制台构建 + .app / .dmg / .zip
-npm run dist:dir          # 仅产出 .app（更快，便于本地冒烟）
-```
-
-产物在 `release/`：
-
-- `Mock Server.app`（如 `release/mac-arm64/Mock Server.app`）— 可拖到「应用程序」
-- `.dmg` — 分发给同事
-- `.zip` — 便于 CI / 归档
-
-**架构说明：** 当前 `package.json` 的 `build.mac.target` 仅构建 **arm64**（Apple Silicon）。Intel Mac 需将 arch 改为 `["x64"]`，或使用 `["arm64","x64"]` / universal（构建更慢）。
-
-**首次打开（未签名构建）：**
-
-若提示「无法验证开发者」，在 Finder 中 **右键 → 打开**，或：
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/Mock Server.app"
-# 或本地产物：
 xattr -dr com.apple.quarantine "release/mac-arm64/Mock Server.app"
 ```
 
-**配置目录（打包后）：**
+**配置目录：**
 
-`~/Library/Application Support/Mock Server/config/`
-
-（开发时仍使用仓库内 `config/`。也可用环境变量 `MOCK_CONFIG_DIR` 覆盖。）
-
-需要正式分发且免 Gatekeeper 警告时，使用 Apple Developer ID 签名并公证（见设计文档 L2：`docs/superpowers/specs/2026-08-03-electron-mac-app-design.md`）。
+| 场景 | 路径 |
+|------|------|
+| 开发（`npm start` / `npm run desktop` 源码） | 仓库内 `config/` |
+| 打包后的 `.app` | `~/Library/Application Support/Mock Server/config/` |
+| 自定义 | 环境变量 `MOCK_CONFIG_DIR` |
 
 环境变量（可选）：`ADMIN_PORT`、`ADMIN_HOST`、`CORS_ORIGIN`、`MOCK_DELAY_MS`、`MOCK_CONFIG_DIR`
 
@@ -86,8 +83,8 @@ HTTP 请求
 |------|------|
 | 项目 | 新建、暂停/恢复（释放端口）、删除、重载 |
 | 接口 | 一接口多场景；`match` 优先于「当前启用」场景 |
-| 响应模式 | 场景级 `mode`: `json`（默认）或 `sse` 流式（`stream.events`） |
-| 日志 | 请求/响应详情；SSE 仅存摘要；可保存为场景 |
+| 响应模式 | 场景级 `mode`: `json`（默认）或 `sse` 流式 |
+| 日志 | 请求/响应详情；可保存为场景 |
 | Proxy | 默认上游 + 按 `pathPrefix` 的规则列表 |
 
 ### 暂停
@@ -99,38 +96,34 @@ HTTP 请求
 ## 目录结构
 
 ```text
-mock-server/
-├── console/                 # 控制台前端（Vite React）
-│   └── src/
-│       ├── api/             # Admin API 客户端
-│       ├── features/        # overview / routes / logs / projects
-│       ├── hooks/
-│       └── utils/
-├── electron/                # 桌面壳（窗口 + 托盘）
-│   ├── main.js
-│   └── preload.cjs
-├── public/console/          # 构建产物（gitignore，由 npm run build 生成）
-├── config/
-│   ├── projects.json        # 项目元数据（端口、proxy、启停）
-│   └── projects/<slug>/
-│       └── routes.json      # 接口与场景
-├── src/
-│   ├── runtime.js           # 共享启动（CLI + Electron）
-│   ├── server.js            # CLI 入口
+mocker/
+├── apps/
+│   ├── web/                 # Web 控制台（Vite + React + Ant Design）
+│   │   └── src/
+│   └── desktop/             # 桌面端 Electron 壳
+│       ├── main.js
+│       └── preload.cjs
+├── server/                  # 后端 runtime + Admin API + Mock 引擎
+│   ├── server.js            # CLI / Web 入口
+│   ├── runtime.js           # 共享启动（Web + Desktop）
 │   ├── admin/               # 管理 API + 静态控制台
-│   ├── core/                # 路由、日志、proxy、配置
-│   ├── lib/                 # 小工具
-│   └── projects/            # 可选代码注册项目（默认空）
-└── test/                    # 后端单测
+│   ├── core/                # 路由、日志、proxy、配置、路径
+│   └── lib/
+├── public/console/          # Web 构建产物（gitignore，由 npm run build 生成）
+├── config/                  # 项目元数据与 routes（开发时）
+├── scripts/
+├── test/
+└── package.json             # 根脚本：双入口编排
 ```
 
-### `src/core` 模块
+### `server/core` 模块
 
 | 文件 | 职责 |
 |------|------|
 | `project-manager.js` | 项目生命周期、路由 CRUD、日志 |
 | `config-store.js` | `projects.json` 读写与校验 |
 | `route-store.js` | `routes.json` 规范化 / 迁移 |
+| `paths.js` | 包根路径 / 配置目录 / 控制台静态目录 |
 | `match.js` | 场景匹配、proxy 规则、日志截断 |
 | `dynamic-routes.js` | 请求命中 Mock 场景 |
 | `proxy.js` | 上游转发回落 |
@@ -144,9 +137,9 @@ mock-server/
 - 项目：新建、暂停/恢复、删除、重载、侧栏筛选
 - 概览：名称/端口/proxy/路径规则、运行开关
 - 接口 Mock：场景切换、match、requestExample、试请求、curl、导入导出
-- **SSE 流式**：场景 `mode: "sse"`，配置 `stream.events[]`（`event` / `data` / `id` / `retry` / `delayMs`）、`endWithDone`、`keepAliveMs`；试请求按流读取；curl 使用 `-N`
+- **SSE 流式**：场景 `mode: "sse"`，配置 `stream.events[]`
 - 请求日志：筛选、详情、curl、保存为场景
-- 主题：浅色 / 深色
+- 主题：浅色 / 深色（Web 与桌面共用同一套 UI）
 
 ### SSE 场景示例（`routes.json`）
 
@@ -169,9 +162,16 @@ mock-server/
 }
 ```
 
-本地验证：`curl -N -X POST 'http://127.0.0.1:<port>/path' -H 'Accept: text/event-stream' -H 'Content-Type: application/json' -d '{}'`
+本地验证：
 
-开发时 API 由 Vite 代理到 `:4000`（见 `console/vite.config.ts`）。
+```bash
+curl -N -X POST 'http://127.0.0.1:<port>/path' \
+  -H 'Accept: text/event-stream' \
+  -H 'Content-Type: application/json' \
+  -d '{}'
+```
+
+开发时 API 由 Vite 代理到 `:4000`（见 `apps/web/vite.config.ts`）。
 
 ---
 
@@ -179,49 +179,58 @@ mock-server/
 
 | 命令 | 说明 |
 |------|------|
-| `npm run dev` | 后端 + 控制台 HMR |
+| `npm run dev` | Web：后端 + 控制台 HMR |
 | `npm run dev:server` | 仅 Express |
-| `npm run dev:console` | 仅 Vite |
-| `npm run build` | 构建控制台 → `public/console` |
-| `npm start` | 启动后端并托管已构建控制台 |
-| `npm run electron` | 构建 + 打开桌面壳 |
-| `npm run electron:dev` | 控制台 HMR + Electron |
-| `npm run electron:only` | 不构建，直接开 Electron（需已 build） |
-| `npm run dist:mac` | 打包 macOS `.app` + `.dmg` + `.zip` → `release/` |
-| `npm run dist:dir` | 仅打包 `.app`（更快） |
-| `npm test` | 后端测试 |
-
-### Electron 行为
-
-- 与 `npm start` 共用 `src/runtime.js`（多项目端口 + Admin API）
-- 关闭窗口 → **隐藏到托盘**，Mock 继续监听
-- 托盘：打开控制台 / 浏览器打开 / 复制地址 / 退出（释放端口）
-- 单实例：再次启动会聚焦已有窗口
-- **打包应用**：`npm run dist:mac` / `dist:dir`（见上文「打包 macOS 应用」）
-- 自动更新 / Developer ID 公证尚未做
+| `npm run dev:web` | 仅 Vite 控制台 |
+| `npm run dev:desktop` | 桌面开发：Vite + Electron |
+| `npm run build` | 构建 Web 控制台到 `public/console/` |
+| `npm start` | 生产 Web：服务端 + 已构建控制台 |
+| `npm run desktop` | 构建后启动 Electron |
+| `npm run desktop:only` | 不重建，直接 Electron |
+| `npm run dist:dir` | 打包 macOS `.app` |
+| `npm run dist:mac` | 打包 `.app` + `.dmg` + `.zip` |
+| `npm test` | 后端单测 |
 
 ---
 
 ## 配置文件
 
-```text
-config/projects.json
-config/projects/<slug>/routes.json
+### `config/projects.json`
+
+```json
+{
+  "adminPort": 4000,
+  "projects": {
+    "demo": {
+      "name": "Demo",
+      "description": "",
+      "enabled": true,
+      "port": 4001,
+      "proxy": {
+        "enabled": false,
+        "target": "",
+        "rules": []
+      },
+      "managed": true
+    }
+  }
+}
 ```
 
-在控制台新建项目并配置接口即可；可选在 `src/projects/index.js` 注册需要自定义 `createRouter()` 的代码项目。
+### `config/projects/<slug>/routes.json`
+
+`version: 2`，每条接口含多 `scenarios`（含可选 `mode` / `stream` / `match`）。
 
 ---
 
-## Admin API（摘要）
+## 测试
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | `/health` | 健康检查 |
-| GET/POST | `/__mock/projects` | 列表 / 新建 |
-| PATCH | `/__mock/projects/:slug` | 更新配置 |
-| POST | `.../pause` · `.../resume` · `.../reload` | 暂停 / 恢复 / 重载 |
-| DELETE | `/__mock/projects/:slug` | 删除 managed 项目 |
-| GET/PUT/POST | `.../routes` | 路由读写 |
-| GET | `.../logs` · `.../logs/:id` | 请求日志 |
-| POST | `.../logs/:id/to-scenario` | 日志转场景 |
+```bash
+npm test
+```
+
+---
+
+## License
+
+Private / 按仓库设置。

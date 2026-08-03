@@ -1,8 +1,0 @@
-{
-  "code": 400,
-  "message": "invalid-winner",
-  "data": {
-    "success": false,
-    "error": "invalid-winner"
-  }
-}

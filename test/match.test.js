@@ -6,7 +6,7 @@ import {
   pickScenario,
   resolveProxyTarget,
   scenarioMatches,
-} from "../src/core/match.js"
+} from "../server/core/match.js"
 
 describe("getByPath", () => {
   it("reads nested values", () => {

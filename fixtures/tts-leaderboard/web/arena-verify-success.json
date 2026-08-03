@@ -1,7 +1,0 @@
-{
-  "code": 200,
-  "message": "success",
-  "data": {
-    "sessionToken": "mock-session-token-001"
-  }
-}

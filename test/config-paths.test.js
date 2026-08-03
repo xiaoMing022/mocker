@@ -4,9 +4,9 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, it } from "node:test"
 
-import { getConfigPath, loadConfig } from "../src/core/config-store.js"
-import { resetPathsForTests } from "../src/core/paths.js"
-import { loadRoutes, saveRoutes } from "../src/core/route-store.js"
+import { getConfigPath, loadConfig } from "../server/core/config-store.js"
+import { resetPathsForTests } from "../server/core/paths.js"
+import { loadRoutes, saveRoutes } from "../server/core/route-store.js"
 
 describe("config under overridden root", () => {
   /** @type {string | undefined} */

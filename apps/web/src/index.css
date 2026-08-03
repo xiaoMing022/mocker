@@ -1,0 +1,127 @@
+:root {
+  --ms-font-sans: "Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei",
+    system-ui, sans-serif;
+  --ms-font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+    Consolas, monospace;
+
+  --ms-bg: #f3f5f9;
+  --ms-bg-elevated: #ffffff;
+  --ms-bg-muted: #eef1f6;
+  --ms-border: rgba(15, 23, 42, 0.08);
+  --ms-border-strong: rgba(15, 23, 42, 0.12);
+  --ms-text: rgba(15, 23, 42, 0.92);
+  --ms-text-secondary: rgba(15, 23, 42, 0.55);
+  --ms-text-tertiary: rgba(15, 23, 42, 0.4);
+  --ms-primary: #2f5bea;
+  --ms-primary-soft: rgba(47, 91, 234, 0.1);
+  --ms-success: #0f9f6e;
+  --ms-warning: #d48806;
+  --ms-danger: #e5484d;
+  --ms-header: linear-gradient(120deg, #0b1220 0%, #15233f 55%, #1a2b4a 100%);
+  --ms-sider: #ffffff;
+  --ms-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --ms-shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --ms-radius: 12px;
+  --ms-radius-sm: 8px;
+  --ms-header-h: 56px;
+  --ms-sider-w: 288px;
+}
+
+html[data-theme="dark"] {
+  --ms-bg: #0b1220;
+  --ms-bg-elevated: #121a2b;
+  --ms-bg-muted: #182235;
+  --ms-border: rgba(255, 255, 255, 0.08);
+  --ms-border-strong: rgba(255, 255, 255, 0.12);
+  --ms-text: rgba(248, 250, 252, 0.92);
+  --ms-text-secondary: rgba(248, 250, 252, 0.58);
+  --ms-text-tertiary: rgba(248, 250, 252, 0.4);
+  --ms-primary: #6b8cff;
+  --ms-primary-soft: rgba(107, 140, 255, 0.14);
+  --ms-header: linear-gradient(120deg, #070b14 0%, #0f1729 50%, #132038 100%);
+  --ms-sider: #0f1729;
+  --ms-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --ms-shadow-md: 0 12px 32px rgba(0, 0, 0, 0.35);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--ms-font-sans);
+  background: var(--ms-bg);
+  color: var(--ms-text);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Electron titlebar drag region support */
+body.desktop-shell {
+  user-select: none;
+}
+
+body.desktop-shell .app-header {
+  -webkit-app-region: drag;
+}
+
+body.desktop-shell .app-header button,
+body.desktop-shell .app-header .ant-tag,
+body.desktop-shell .app-header input,
+body.desktop-shell .app-header a,
+body.desktop-shell .no-drag {
+  -webkit-app-region: no-drag;
+}
+
+::selection {
+  background: var(--ms-primary-soft);
+  color: var(--ms-text);
+}
+
+/* Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(100, 116, 139, 0.45) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 116, 139, 0.55);
+}
+
+.code-block {
+  margin: 6px 0 12px;
+  padding: 12px 14px;
+  background: var(--ms-bg-elevated);
+  border: 1px solid var(--ms-border);
+  border-radius: var(--ms-radius-sm);
+  font-family: var(--ms-font-mono);
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 280px;
+  overflow: auto;
+  box-shadow: var(--ms-shadow-sm);
+}
+
+.mono,
+.mono textarea {
+  font-family: var(--ms-font-mono);
+}

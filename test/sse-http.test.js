@@ -4,7 +4,7 @@ import { describe, it } from "node:test"
 
 import express from "express"
 
-import { createDynamicRoutesMiddleware } from "../src/core/dynamic-routes.js"
+import { createDynamicRoutesMiddleware } from "../server/core/dynamic-routes.js"
 
 function listen(app) {
   return new Promise((resolve) => {

@@ -4,7 +4,7 @@
     "tts-leaderboard": {
       "name": "TTS Leaderboard",
       "description": "TTS 排行榜 Web / Admin Mock（控制台管理）",
-      "enabled": true,
+      "enabled": false,
       "port": 4001,
       "proxy": {
         "enabled": false,

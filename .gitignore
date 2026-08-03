@@ -1,29 +1,69 @@
 # Dependencies
 node_modules/
-console/node_modules/
+apps/web/node_modules/
+**/node_modules/
 
-# Logs & OS
+# Logs
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# OS
 .DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Desktop.ini
 
 # Temp / runtime
 *.tmp
+*.temp
+.cache/
 config/projects.json.tmp
 config/projects/**/*.tmp
 
-# Console build output (run `npm run build`)
-console/dist/
+# Web console build output (run `npm run build`)
+apps/web/dist/
 public/console/*
 !public/console/.gitkeep
 
-# Editor
+# Editor / IDE
 .vscode/
 .idea/
 *.sw?
+*.sublime-*
+.project
+.classpath
+.settings/
 
-# Electron
-dist-electron/
-out/
+# Env / secrets (never commit local secrets)
+.env
+.env.*
+!.env.example
+
+# Test / coverage
+coverage/
+.nyc_output/
+
+# Electron packaging output
 release/
 dist/
+dist-electron/
+out/
 *.dmg
+*.zip
+!package-lock.json
+
+# electron-builder
+builder-effective-config.yaml
+builder-debug.yml
+*.blockmap
+
+# TypeScript incremental
+*.tsbuildinfo
+
+# Optional local worktrees
+.worktrees/
+worktrees/

@@ -5,7 +5,7 @@ import {
   normalizeRoute,
   normalizeRouteList,
   validateRoutesPayload,
-} from "../src/core/route-store.js"
+} from "../server/core/route-store.js"
 
 describe("normalizeRoute scenarios + match", () => {
   it("keeps match and requestExample", () => {

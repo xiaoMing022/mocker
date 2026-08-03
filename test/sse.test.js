@@ -7,7 +7,7 @@ import {
   formatSseEvent,
   stringifySseData,
   summarizeSseStream,
-} from "../src/lib/sse.js"
+} from "../server/lib/sse.js"
 
 describe("clampDelayMs", () => {
   it("clamps negative and over max", () => {

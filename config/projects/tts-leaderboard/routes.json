@@ -2,18 +2,18 @@
   "version": 2,
   "routes": [
     {
-      "id": "e9f48360-ba2b-4646-81fd-8fb2c788088f",
+      "id": "fed244ea-b309-407b-b338-daf934b77daa",
       "name": "[web] Arena 校验会话",
       "method": "POST",
       "path": "/api/v1/arena/verify",
       "enabled": true,
-      "activeScenarioId": "14b84152-86b0-45c8-85a4-531b41a816e0",
+      "activeScenarioId": "e3efd178-c3d6-4721-9f4a-27c280b86ba0",
       "scenarios": [
         {
-          "id": "14b84152-86b0-45c8-85a4-531b41a816e0",
+          "id": "e3efd178-c3d6-4721-9f4a-27c280b86ba0",
           "name": "成功",
           "statusCode": 200,
-          "delayMs": 120,
+          "delayMs": 3000,
           "response": {
             "code": 200,
             "message": "success",
@@ -21,36 +21,66 @@
               "sessionToken": "mock-session-token-001"
             }
           },
-          "headers": {}
+          "headers": {},
+          "match": null,
+          "mode": "json",
+          "stream": null
         },
         {
-          "id": "eae551cb-b08b-4ac1-9908-20287b0f86e9",
+          "id": "c4e70485-cb47-4b73-b422-009ac7ccd12d",
           "name": "缺少 token",
           "statusCode": 400,
           "delayMs": 80,
           "response": {
             "code": 400,
-            "message": "缺少 turnstileToken",
+            "message": "参数错误：token 不能为空",
             "data": null
           },
-          "headers": {}
+          "headers": {},
+          "match": {
+            "body": {
+              "turnstileToken": "empty"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "92c33748-92c8-4376-a84e-a4c35a941320",
+          "name": "人机验证失败",
+          "statusCode": 400,
+          "delayMs": 80,
+          "response": {
+            "code": 400,
+            "message": "人机验证失败，请重试",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "turnstileToken": "invalid"
+            }
+          },
+          "mode": "json",
+          "stream": null
         }
       ],
-      "note": "body: { turnstileToken }"
+      "note": "body: { turnstileToken }",
+      "requestExample": null
     },
     {
-      "id": "65199b7c-94e6-45b0-93a5-50a86772dd76",
+      "id": "69fa4659-0ecb-4893-8ea9-be2613442813",
       "name": "[web] Arena 对战",
       "method": "POST",
       "path": "/api/v1/arena/battle",
       "enabled": true,
-      "activeScenarioId": "fb3ca366-3fd3-4a90-b444-774644549068",
+      "activeScenarioId": "4badb3fc-6331-4a84-9ea8-8073b7a95042",
       "scenarios": [
         {
-          "id": "fb3ca366-3fd3-4a90-b444-774644549068",
+          "id": "4badb3fc-6331-4a84-9ea8-8073b7a95042",
           "name": "成功",
           "statusCode": 200,
-          "delayMs": 120,
+          "delayMs": 2996,
           "response": {
             "code": 200,
             "message": "success",
@@ -69,33 +99,177 @@
               }
             }
           },
-          "headers": {}
+          "headers": {},
+          "match": null,
+          "mode": "json",
+          "stream": null
         },
         {
-          "id": "35bf2be2-9b12-4e62-a198-e9d397133c4e",
-          "name": "未授权",
-          "statusCode": 401,
+          "id": "1f4fcd9c-9260-483b-b080-c2369175253c",
+          "name": "会话已过期",
+          "statusCode": 400,
           "delayMs": 80,
           "response": {
-            "code": 401,
-            "message": "sessionToken 无效或已过期",
+            "code": 400,
+            "message": "会话已过期，请刷新页面重新验证",
             "data": null
           },
-          "headers": {}
+          "headers": {},
+          "match": {
+            "headers": {
+              "x-session-token": "expired"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "fa6c71f9-0485-4946-ac0b-c06fde9e6918",
+          "name": "缺少 sessionToken",
+          "statusCode": 400,
+          "delayMs": 80,
+          "response": {
+            "code": 400,
+            "message": "参数错误：sessionToken 不能为空",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "headers": {
+              "x-session-token": "empty"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "279730a6-b54a-46c4-9173-0ed96c4b89c3",
+          "name": "暂无可用对战",
+          "statusCode": 503,
+          "delayMs": 80,
+          "response": {
+            "code": 503,
+            "message": "暂无可用对战，请稍后再试",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "headers": {
+              "x-mock-error": "no-battle"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "e055921d-0bbe-4270-8a67-e8ea46fb2080",
+          "name": "服务器内部错误",
+          "statusCode": 500,
+          "delayMs": 80,
+          "response": {
+            "code": 500,
+            "message": "服务器内部错误",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "headers": {
+              "x-mock-error": "500"
+            }
+          },
+          "mode": "json",
+          "stream": null
         }
       ],
-      "note": "需要请求头 X-Session-Token（业务侧校验；mock 可直接返回成功）"
+      "note": "需要请求头 X-Session-Token（业务侧校验；mock 可直接返回成功）",
+      "requestExample": null
     },
     {
-      "id": "1d19eb1d-9cea-492a-9dcd-b8f64ac6466d",
+      "id": "711fefda-8541-48af-ad5d-2bbd076da010",
       "name": "[web] Arena 投票",
       "method": "POST",
       "path": "/api/v1/arena/vote",
       "enabled": true,
-      "activeScenarioId": "0ca66e89-452e-4fa8-9ba0-e1ee50a2e943",
+      "activeScenarioId": "214dc3b6-6514-4ce0-af2c-7a5c19afff2b",
       "scenarios": [
         {
-          "id": "0ca66e89-452e-4fa8-9ba0-e1ee50a2e943",
+          "id": "214dc3b6-6514-4ce0-af2c-7a5c19afff2b",
+          "name": "会话已过期",
+          "statusCode": 400,
+          "delayMs": 80,
+          "response": {
+            "code": 400,
+            "message": "会话已过期，请刷新页面重新验证",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "headers": {
+              "x-session-token": "expired"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "a29e87cc-1104-40c7-86a5-80ec811e033d",
+          "name": "服务器内部错误",
+          "statusCode": 500,
+          "delayMs": 80,
+          "response": {
+            "code": 500,
+            "message": "服务器内部错误",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "headers": {
+              "x-mock-error": "500"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "d270a1a4-5952-4bbd-8167-a6bfa6848c94",
+          "name": "对战不存在",
+          "statusCode": 400,
+          "delayMs": 80,
+          "response": {
+            "code": 400,
+            "message": "对战不存在",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "battleId": "not-found"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "350435f8-67f4-49b0-90ec-56a4e468f0c5",
+          "name": "非法选择",
+          "statusCode": 400,
+          "delayMs": 180,
+          "response": {
+            "code": 400,
+            "message": "参数错误：battleId/winner 无效",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "winner": "invalid"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "fe3d84c9-7dc4-454c-b431-1a816e0ab56a",
           "name": "成功 A",
           "statusCode": 200,
           "delayMs": 180,
@@ -118,10 +292,17 @@
               }
             }
           },
-          "headers": {}
+          "headers": {},
+          "match": {
+            "body": {
+              "winner": "A"
+            }
+          },
+          "mode": "json",
+          "stream": null
         },
         {
-          "id": "13e42b1d-f7fe-424a-9d6c-82b22c3dbc05",
+          "id": "ca199ebd-573c-45cc-bfb7-e46842b47c1e",
           "name": "成功 B",
           "statusCode": 200,
           "delayMs": 180,
@@ -144,51 +325,32 @@
               }
             }
           },
-          "headers": {}
-        },
-        {
-          "id": "562769d1-b14c-41ba-a196-93eeab366ad4",
-          "name": "非法选择",
-          "statusCode": 400,
-          "delayMs": 180,
-          "response": {
-            "code": 400,
-            "message": "invalid-winner",
-            "data": {
-              "success": false,
-              "error": "invalid-winner"
+          "headers": {},
+          "match": {
+            "body": {
+              "winner": "B"
             }
           },
-          "headers": {}
-        },
-        {
-          "id": "85173d35-3b08-4cba-b28e-fb50e912d271",
-          "name": "未授权",
-          "statusCode": 401,
-          "delayMs": 80,
-          "response": {
-            "code": 401,
-            "message": "sessionToken 无效或已过期",
-            "data": null
-          },
-          "headers": {}
+          "mode": "json",
+          "stream": null
         }
       ],
-      "note": "联调时在此切换 A / B / 非法 场景"
+      "note": "联调时在此切换 A / B / 非法 场景",
+      "requestExample": null
     },
     {
-      "id": "d465fc2e-ff9c-4f63-b58c-d3588784c415",
+      "id": "87272c8c-5d05-4315-9072-361ca7cd92a4",
       "name": "[web] 排行榜",
-      "method": "GET",
+      "method": "POST",
       "path": "/api/v1/leaderboard",
-      "enabled": true,
-      "activeScenarioId": "2df33207-9f6b-4f87-8f7a-e27227f0d315",
+      "enabled": false,
+      "activeScenarioId": "69be940c-6497-44d7-96d1-f9d0bda7a6bd",
       "scenarios": [
         {
-          "id": "2df33207-9f6b-4f87-8f7a-e27227f0d315",
+          "id": "69be940c-6497-44d7-96d1-f9d0bda7a6bd",
           "name": "正常列表",
           "statusCode": 200,
-          "delayMs": 120,
+          "delayMs": 3000,
           "response": {
             "code": 200,
             "message": "success",
@@ -341,10 +503,13 @@
               ]
             }
           },
-          "headers": {}
+          "headers": {},
+          "match": null,
+          "mode": "json",
+          "stream": null
         },
         {
-          "id": "61a6d73e-2f1b-4f0d-958b-ee0d5132bda6",
+          "id": "107ca630-7865-4270-9cff-fd0fffc6eb40",
           "name": "空列表",
           "statusCode": 200,
           "delayMs": 80,
@@ -356,21 +521,44 @@
               "items": []
             }
           },
-          "headers": {}
+          "headers": {},
+          "match": null,
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "1c62bb3b-514c-427e-9ed7-32de1584b6ef",
+          "name": "服务器内部错误",
+          "statusCode": 500,
+          "delayMs": 80,
+          "response": {
+            "code": 500,
+            "message": "服务器内部错误",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "headers": {
+              "x-mock-error": "500"
+            }
+          },
+          "mode": "json",
+          "stream": null
         }
       ],
-      "note": ""
+      "note": "",
+      "requestExample": null
     },
     {
-      "id": "55a27568-56c4-4e50-8dc9-e2da0c02fa1f",
+      "id": "a0713648-4208-4754-b1fb-8f87f05f6bdc",
       "name": "[web] 提交联系表单",
       "method": "POST",
       "path": "/api/v1/contact",
       "enabled": true,
-      "activeScenarioId": "70c2e9c6-d94e-44f5-95ea-ed08798204e8",
+      "activeScenarioId": "fba9f511-04f2-4e79-852b-c0423fa46ba1",
       "scenarios": [
         {
-          "id": "70c2e9c6-d94e-44f5-95ea-ed08798204e8",
+          "id": "fba9f511-04f2-4e79-852b-c0423fa46ba1",
           "name": "成功",
           "statusCode": 200,
           "delayMs": 200,
@@ -381,33 +569,139 @@
               "success": true
             }
           },
-          "headers": {}
+          "headers": {},
+          "match": null,
+          "mode": "json",
+          "stream": null
         },
         {
-          "id": "08804f39-591a-4baa-b0e8-a24e76a1f2d5",
-          "name": "参数错误",
+          "id": "a2bbceda-e3e7-46f3-85d7-a031fab9c5cf",
+          "name": "缺少必填字段",
           "statusCode": 400,
           "delayMs": 100,
           "response": {
             "code": 400,
-            "message": "请填写姓名、邮箱与具体信息",
+            "message": "请填写必填字段",
             "data": null
           },
-          "headers": {}
+          "headers": {},
+          "match": {
+            "body": {
+              "name": "empty"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "6e65f177-d966-40a7-82ce-b253fdebdfe7",
+          "name": "邮箱格式错误",
+          "statusCode": 400,
+          "delayMs": 80,
+          "response": {
+            "code": 400,
+            "message": "请填写正确的邮箱",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "email": "bad-email"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "4d40110d-2d34-4ff1-8a8e-1358e19db91a",
+          "name": "姓名超长",
+          "statusCode": 400,
+          "delayMs": 80,
+          "response": {
+            "code": 400,
+            "message": "姓名不能超过100字",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "name": "too-long"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "694a62e3-39a8-44b8-b64d-a295f800f278",
+          "name": "公司名称超长",
+          "statusCode": 400,
+          "delayMs": 80,
+          "response": {
+            "code": 400,
+            "message": "公司名称不能超过100字",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "company": "too-long"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "7565e172-5dd0-4b2d-bc0f-99eb6b7a02b8",
+          "name": "具体信息超长",
+          "statusCode": 400,
+          "delayMs": 80,
+          "response": {
+            "code": 400,
+            "message": "具体信息不能超过1000字",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "body": {
+              "content": "too-long"
+            }
+          },
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "02027357-e844-46c3-bf61-d5529d2bfb88",
+          "name": "提交失败",
+          "statusCode": 500,
+          "delayMs": 80,
+          "response": {
+            "code": 500,
+            "message": "暂时无法提交，请稍后重试，或直接发送邮件至官方邮箱。",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "headers": {
+              "x-mock-error": "500"
+            }
+          },
+          "mode": "json",
+          "stream": null
         }
       ],
-      "note": ""
+      "note": "",
+      "requestExample": null
     },
     {
-      "id": "09fa9c74-e114-4e5d-ae35-a9288ea66cfc",
+      "id": "fdf0c497-0f87-4497-8d86-2ebd03a7cd3e",
       "name": "[web] 站点联系信息",
-      "method": "GET",
+      "method": "POST",
       "path": "/api/v1/site/contact-info",
       "enabled": true,
-      "activeScenarioId": "c3d19a2e-918a-46d5-b98f-61dd7483327c",
+      "activeScenarioId": "9ac3bfd9-d1e5-4bed-a900-9f3b9584a7ff",
       "scenarios": [
         {
-          "id": "c3d19a2e-918a-46d5-b98f-61dd7483327c",
+          "id": "9ac3bfd9-d1e5-4bed-a900-9f3b9584a7ff",
           "name": "默认",
           "statusCode": 200,
           "delayMs": 100,
@@ -452,21 +746,44 @@
               ]
             }
           },
-          "headers": {}
+          "headers": {},
+          "match": null,
+          "mode": "json",
+          "stream": null
+        },
+        {
+          "id": "836771e3-8007-4560-a105-b95cd22d0fa8",
+          "name": "服务器内部错误",
+          "statusCode": 500,
+          "delayMs": 80,
+          "response": {
+            "code": 500,
+            "message": "服务器内部错误",
+            "data": null
+          },
+          "headers": {},
+          "match": {
+            "headers": {
+              "x-mock-error": "500"
+            }
+          },
+          "mode": "json",
+          "stream": null
         }
       ],
-      "note": ""
+      "note": "",
+      "requestExample": null
     },
     {
-      "id": "8d8aff8e-d4c6-46ea-a85a-0e5812e5ecbf",
+      "id": "63a16735-516a-4b90-b835-fdb3853362bf",
       "name": "[admin] 统计",
       "method": "GET",
       "path": "/api/admin/stats",
       "enabled": true,
-      "activeScenarioId": "dee2ef8b-db60-4ee7-a157-77a491a5ea93",
+      "activeScenarioId": "d3c176fc-7ece-495b-a3a7-204465e58862",
       "scenarios": [
         {
-          "id": "dee2ef8b-db60-4ee7-a157-77a491a5ea93",
+          "id": "d3c176fc-7ece-495b-a3a7-204465e58862",
           "name": "默认",
           "statusCode": 200,
           "delayMs": 120,
@@ -480,21 +797,25 @@
               "activeBattles": 6
             }
           },
-          "headers": {}
+          "headers": {},
+          "match": null,
+          "mode": "json",
+          "stream": null
         }
       ],
-      "note": ""
+      "note": "",
+      "requestExample": null
     },
     {
-      "id": "e8bf873d-de0a-45f2-a576-7fdcec889a2c",
+      "id": "ef862229-9dc3-4649-b806-bb1bcf808ce9",
       "name": "[admin] 模型列表",
       "method": "GET",
       "path": "/api/admin/models",
       "enabled": true,
-      "activeScenarioId": "37a7c05a-2985-4a3b-a101-921259b6a5d5",
+      "activeScenarioId": "b7f71275-b982-4ef2-b325-c05b2896e779",
       "scenarios": [
         {
-          "id": "37a7c05a-2985-4a3b-a101-921259b6a5d5",
+          "id": "b7f71275-b982-4ef2-b325-c05b2896e779",
           "name": "默认",
           "statusCode": 200,
           "delayMs": 160,
@@ -520,48 +841,14 @@
               ]
             }
           },
-          "headers": {}
+          "headers": {},
+          "match": null,
+          "mode": "json",
+          "stream": null
         }
       ],
-      "note": ""
-    },
-    {
-      "id": "56ff0818-048e-43aa-a3a3-2d4af5d9846a",
-      "name": "[admin] 排行榜",
-      "method": "GET",
-      "path": "/api/admin/leaderboard",
-      "enabled": true,
-      "activeScenarioId": "6b4ce9a6-66d8-4047-9c3b-3b049ae6083d",
-      "scenarios": [
-        {
-          "id": "6b4ce9a6-66d8-4047-9c3b-3b049ae6083d",
-          "name": "默认",
-          "statusCode": 200,
-          "delayMs": 160,
-          "response": {
-            "code": 200,
-            "message": "success",
-            "data": {
-              "items": [
-                {
-                  "rank": 1,
-                  "modelId": "mock-model-001",
-                  "winRate": 0.68,
-                  "votes": 742
-                },
-                {
-                  "rank": 2,
-                  "modelId": "mock-model-002",
-                  "winRate": 0.61,
-                  "votes": 544
-                }
-              ]
-            }
-          },
-          "headers": {}
-        }
-      ],
-      "note": ""
+      "note": "",
+      "requestExample": null
     }
   ]
 }
