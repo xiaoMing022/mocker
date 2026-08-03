@@ -112,7 +112,6 @@ mocker/
 ├── public/console/          # Web 构建产物（gitignore，由 npm run build 生成）
 ├── config/                  # 项目元数据与 routes（开发时）
 ├── scripts/
-├── test/
 └── package.json             # 根脚本：双入口编排
 ```
 
@@ -189,7 +188,6 @@ curl -N -X POST 'http://127.0.0.1:<port>/path' \
 | `npm run desktop:only` | 不重建，直接 Electron |
 | `npm run dist:dir` | 打包 macOS `.app` |
 | `npm run dist:mac` | 打包 `.app` + `.dmg` + `.zip` |
-| `npm test` | 后端单测 |
 
 ---
 
@@ -220,14 +218,6 @@ curl -N -X POST 'http://127.0.0.1:<port>/path' \
 ### `config/projects/<slug>/routes.json`
 
 `version: 2`，每条接口含多 `scenarios`（含可选 `mode` / `stream` / `match`）。
-
----
-
-## 测试
-
-```bash
-npm test
-```
 
 ---
 

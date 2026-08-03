@@ -43,7 +43,9 @@ public/console/*
 .env.*
 !.env.example
 
-# Test / coverage
+# Test / coverage (kept local only — not published to remote)
+test/
+docs/
 coverage/
 .nyc_output/
 
