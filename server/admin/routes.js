@@ -88,6 +88,25 @@ export function registerAdminRoutes(app, { manager }) {
     }
   })
 
+  /** 切换项目当前环境（测试/灰度/线上等） */
+  app.post("/__mock/projects/:slug/environment", async (req, res) => {
+    try {
+      const id = req.body?.id ?? req.body?.environmentId ?? req.body?.activeEnvironment
+      if (!id) {
+        res.status(400).json({
+          code: 400,
+          message: "id (environment id) is required",
+          data: null,
+        })
+        return
+      }
+      const project = await manager.setActiveEnvironment(req.params.slug, String(id))
+      res.json({ project })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
   /** 删除控制台创建的项目（代码注册项目不可删） */
   app.delete("/__mock/projects/:slug", async (req, res) => {
     try {

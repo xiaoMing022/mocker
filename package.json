@@ -3,7 +3,7 @@
   "version": "0.4.0",
   "private": true,
   "type": "module",
-  "description": "Multi-project local mock server with web console and desktop shell",
+  "description": "Mocker — multi-project local mock server with web console and desktop shell",
   "repository": {
     "type": "git",
     "url": "git@github.com:xiaoMing022/mocker.git"
@@ -36,7 +36,7 @@
   },
   "build": {
     "appId": "dev.mockserver.app",
-    "productName": "Mock Server",
+    "productName": "Mocker",
     "copyright": "Copyright © Mock Server contributors",
     "directories": {
       "output": "release",
@@ -59,16 +59,26 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         },
         {
           "target": "zip",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
       ],
       "identity": null,
       "hardenedRuntime": false,
       "gatekeeperAssess": false
-    }
+    },
+    "extraResources": [
+      {
+        "from": "config",
+        "to": "seed-config"
+      }
+    ]
   }
 }

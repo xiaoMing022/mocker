@@ -12,7 +12,8 @@ import { createProxyFallback } from "./proxy.js"
  *     proxy: {
  *       enabled: boolean,
  *       target: string,
- *       rules?: Array<{ pathPrefix: string, target?: string, enabled?: boolean }>
+ *       rules?: Array<{ pathPrefix: string, target?: string, enabled?: boolean }>,
+ *       headers?: Record<string, string>
  *     }
  *   },
  *   getRoutes: () => import("./route-store.js").DynamicRoute[],
@@ -84,6 +85,8 @@ export function createProjectApp({ project, runtime, getRoutes, onRequestLog }) 
       enabled: runtime.proxy.enabled,
       target: runtime.proxy.target,
       rules: runtime.proxy.rules || [],
+      headers: runtime.proxy.headers || {},
+      getRoutes,
     }),
   )
 

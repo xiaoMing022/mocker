@@ -1,4 +1,5 @@
 import { createAdminApp } from "./admin/app.js"
+import { ensureConfigSeeded } from "./core/config-seed.js"
 import { resolveAdminPort } from "./core/config-store.js"
 import { createProjectManager } from "./core/project-manager.js"
 import { projects as codeProjects } from "./projects/index.js"
@@ -30,6 +31,8 @@ export async function startMockRuntime(options = {}) {
       ? options.host
       : process.env.ADMIN_HOST || undefined
   const projects = options.codeProjects || codeProjects
+
+  ensureConfigSeeded()
 
   const manager = createProjectManager({ codeProjects: projects })
   await manager.startAll()
