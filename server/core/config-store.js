@@ -2,6 +2,8 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import path from "node:path"
 
 import { getConfigRoot } from "./paths.js"
+import { normalizeHeaderMap } from "./util/headers.js"
+import { SLUG_RE, ENV_ID_RE, isValidSlug } from "./util/ids.js"
 
 function configDir() {
   return getConfigRoot()
@@ -15,16 +17,19 @@ function configTmpPath() {
 
 const DEFAULT_ADMIN_PORT = 4000
 const DEFAULT_PORT_START = 4001
-const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
 
 /**
  * @typedef {{ pathPrefix: string, target?: string, enabled?: boolean }} ProxyRule
+ * @typedef {{ enabled: boolean, target: string, rules: ProxyRule[], headers: Record<string, string> }} ProxyConfig
+ * @typedef {{ name: string, proxy: ProxyConfig }} EnvironmentConfig
  * @typedef {{
  *   name?: string,
  *   description?: string,
  *   enabled: boolean,
  *   port: number,
- *   proxy: { enabled: boolean, target: string, rules: ProxyRule[] },
+ *   activeEnvironment: string,
+ *   environments: Record<string, EnvironmentConfig>,
+ *   proxy: ProxyConfig,
  *   managed?: boolean
  * }} RuntimeConfig
  * @typedef {{ adminPort: number, projects: Record<string, RuntimeConfig> }} AppConfig
@@ -104,22 +109,100 @@ function normalizeAppConfig(parsed) {
 }
 
 /**
+ * Normalize a raw proxy object.
+ * @param {unknown} proxySource
+ * @returns {ProxyConfig}
+ */
+export function normalizeProxyConfig(proxySource) {
+  const src = proxySource && typeof proxySource === "object" ? proxySource : {}
+  return {
+    enabled: Boolean(src.enabled),
+    target: typeof src.target === "string" ? src.target.trim() : "",
+    rules: normalizeProxyRules(src.rules),
+    headers: normalizeHeaderMap(src.headers),
+  }
+}
+
+/**
+ * Resolve effective proxy from environments + activeEnvironment.
+ * @param {{ activeEnvironment?: string, environments?: Record<string, EnvironmentConfig>, proxy?: ProxyConfig }} rt
+ * @returns {ProxyConfig}
+ */
+export function resolveEffectiveProxy(rt) {
+  const envs = rt?.environments && typeof rt.environments === "object" ? rt.environments : null
+  const active = typeof rt?.activeEnvironment === "string" ? rt.activeEnvironment : ""
+  if (envs && active && envs[active]?.proxy) {
+    return normalizeProxyConfig(envs[active].proxy)
+  }
+  if (envs) {
+    const firstKey = Object.keys(envs)[0]
+    if (firstKey && envs[firstKey]?.proxy) {
+      return normalizeProxyConfig(envs[firstKey].proxy)
+    }
+  }
+  return normalizeProxyConfig(rt?.proxy)
+}
+
+/**
  * @param {unknown} value
  * @param {number} fallbackPort
  * @returns {RuntimeConfig}
  */
 export function normalizeRuntimeConfig(value, fallbackPort) {
-  const proxySource = value?.proxy && typeof value.proxy === "object" ? value.proxy : {}
+  const legacyProxy = normalizeProxyConfig(
+    value?.proxy && typeof value.proxy === "object" ? value.proxy : {},
+  )
+
+  /** @type {Record<string, EnvironmentConfig>} */
+  let environments = {}
+  let activeEnvironment = "default"
+
+  if (value?.environments && typeof value.environments === "object") {
+    for (const [id, envVal] of Object.entries(value.environments)) {
+      const envId = String(id).trim()
+      if (!envId) continue
+      const envObj = envVal && typeof envVal === "object" ? envVal : {}
+      const name =
+        typeof envObj.name === "string" && envObj.name.trim()
+          ? envObj.name.trim()
+          : envId
+      environments[envId] = {
+        name,
+        proxy: normalizeProxyConfig(envObj.proxy),
+      }
+    }
+  }
+
+  if (Object.keys(environments).length === 0) {
+    environments = {
+      default: {
+        name: "默认",
+        proxy: legacyProxy,
+      },
+    }
+    activeEnvironment = "default"
+  } else {
+    const requested =
+      typeof value?.activeEnvironment === "string"
+        ? value.activeEnvironment.trim()
+        : ""
+    if (requested && environments[requested]) {
+      activeEnvironment = requested
+    } else {
+      activeEnvironment = Object.keys(environments)[0]
+    }
+  }
+
+  const proxy = resolveEffectiveProxy({ activeEnvironment, environments })
+
   return {
     name: typeof value?.name === "string" ? value.name.trim() : undefined,
     description: typeof value?.description === "string" ? value.description : undefined,
     enabled: value?.enabled !== false,
     port: toPort(value?.port, fallbackPort),
-    proxy: {
-      enabled: Boolean(proxySource.enabled),
-      target: typeof proxySource.target === "string" ? proxySource.target.trim() : "",
-      rules: normalizeProxyRules(proxySource.rules),
-    },
+    activeEnvironment,
+    environments,
+    proxy,
     managed: Boolean(value?.managed),
   }
 }
@@ -145,6 +228,49 @@ export function normalizeProxyRules(raw) {
     })
   }
   return rules
+}
+
+/**
+ * @param {unknown} raw
+ * @returns {{ ok: true, environments: Record<string, EnvironmentConfig> } | { ok: false, errors: string[] }}
+ */
+export function normalizeEnvironmentsInput(raw) {
+  /** @type {string[]} */
+  const errors = []
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return { ok: false, errors: ["environments must be an object"] }
+  }
+  /** @type {Record<string, EnvironmentConfig>} */
+  const environments = {}
+  for (const [id, envVal] of Object.entries(raw)) {
+    const envId = String(id).trim()
+    if (!ENV_ID_RE.test(envId)) {
+      errors.push(`environment id "${id}" must be lowercase letters/digits/hyphens`)
+      continue
+    }
+    const envObj = envVal && typeof envVal === "object" ? envVal : {}
+    const name =
+      typeof envObj.name === "string" && envObj.name.trim()
+        ? envObj.name.trim()
+        : envId
+    const proxy = normalizeProxyConfig(envObj.proxy)
+    if (proxy.target && !isValidHttpUrl(proxy.target)) {
+      errors.push(`environment "${envId}": proxy.target must be http(s) URL`)
+    }
+    for (const rule of proxy.rules || []) {
+      if (rule.target && !isValidHttpUrl(rule.target)) {
+        errors.push(
+          `environment "${envId}" rule ${rule.pathPrefix}: target must be http(s) URL`,
+        )
+      }
+    }
+    environments[envId] = { name, proxy }
+  }
+  if (Object.keys(environments).length === 0) {
+    errors.push("environments must contain at least one environment")
+  }
+  if (errors.length) return { ok: false, errors }
+  return { ok: true, environments }
 }
 
 /**
@@ -189,14 +315,17 @@ function mergeWithCodeProjects(raw, codeProjects) {
     const port =
       toPort(code.defaultPort, 0) || allocatePort(usedPorts, DEFAULT_PORT_START)
     usedPorts.add(port)
-    projects[code.slug] = {
-      name: code.name,
-      description: "",
-      enabled: true,
+    projects[code.slug] = normalizeRuntimeConfig(
+      {
+        name: code.name,
+        description: "",
+        enabled: true,
+        port,
+        proxy: { enabled: false, target: "", rules: [] },
+        managed: false,
+      },
       port,
-      proxy: { enabled: false, target: "", rules: [] },
-      managed: false,
-    }
+    )
     dirty = true
   }
 
@@ -237,6 +366,51 @@ function toPort(value, fallback) {
 }
 
 /**
+ * Serialize one project for disk (environments + activeEnvironment).
+ * @param {RuntimeConfig} p
+ */
+function serializeProject(p) {
+  /** @type {Record<string, { name: string, proxy: object }>} */
+  const environments = {}
+  for (const [id, env] of Object.entries(p.environments || {})) {
+    environments[id] = {
+      name: env.name,
+      proxy: {
+        enabled: env.proxy.enabled,
+        target: env.proxy.target,
+        rules: env.proxy.rules?.length ? env.proxy.rules : undefined,
+        headers:
+          env.proxy.headers && Object.keys(env.proxy.headers).length
+            ? env.proxy.headers
+            : undefined,
+      },
+    }
+  }
+
+  // Keep top-level proxy as effective mirror for hand-editing convenience
+  const effective = resolveEffectiveProxy(p)
+
+  return {
+    name: p.name || undefined,
+    description: p.description || undefined,
+    enabled: p.enabled,
+    port: p.port,
+    activeEnvironment: p.activeEnvironment,
+    environments,
+    proxy: {
+      enabled: effective.enabled,
+      target: effective.target,
+      rules: effective.rules?.length ? effective.rules : undefined,
+      headers:
+        effective.headers && Object.keys(effective.headers).length
+          ? effective.headers
+          : undefined,
+    },
+    managed: p.managed ? true : undefined,
+  }
+}
+
+/**
  * @param {AppConfig} config
  */
 export function saveConfig(config) {
@@ -244,25 +418,13 @@ export function saveConfig(config) {
     mkdirSync(configDir(), { recursive: true })
   }
 
-  // Persist a clean shape
   /** @type {AppConfig} */
   const out = {
     adminPort: config.adminPort,
     projects: {},
   }
   for (const [slug, p] of Object.entries(config.projects)) {
-    out.projects[slug] = {
-      name: p.name || undefined,
-      description: p.description || undefined,
-      enabled: p.enabled,
-      port: p.port,
-      proxy: {
-        enabled: p.proxy.enabled,
-        target: p.proxy.target,
-        rules: p.proxy.rules?.length ? p.proxy.rules : undefined,
-      },
-      managed: p.managed ? true : undefined,
-    }
+    out.projects[slug] = serializeProject(p)
   }
 
   const payload = `${JSON.stringify(out, null, 2)}\n`
@@ -271,8 +433,36 @@ export function saveConfig(config) {
 }
 
 /**
+ * Apply proxy patch onto a ProxyConfig base.
+ * @param {ProxyConfig} base
+ * @param {Partial<ProxyConfig> | undefined} patch
+ */
+function applyProxyPatch(base, patch) {
+  if (!patch) {
+    return {
+      ...base,
+      rules: [...(base.rules || [])],
+      headers: { ...(base.headers || {}) },
+    }
+  }
+  return {
+    enabled: patch.enabled !== undefined ? Boolean(patch.enabled) : base.enabled,
+    target:
+      patch.target !== undefined ? String(patch.target).trim() : base.target,
+    rules:
+      patch.rules !== undefined
+        ? normalizeProxyRules(patch.rules)
+        : [...(base.rules || [])],
+    headers:
+      patch.headers !== undefined
+        ? normalizeHeaderMap(patch.headers)
+        : { ...(base.headers || {}) },
+  }
+}
+
+/**
  * @param {string} slug
- * @param {Partial<RuntimeConfig> & { proxy?: Partial<RuntimeConfig["proxy"]>, name?: string, description?: string }} patch
+ * @param {object} patch
  * @param {AppConfig} fullConfig
  * @param {string[]} knownSlugs
  */
@@ -286,10 +476,54 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
     return { ok: false, errors: [`No runtime config for project: ${slug}`], value: null }
   }
 
-  const nextRules =
-    patch.proxy?.rules !== undefined
-      ? normalizeProxyRules(patch.proxy.rules)
-      : current.proxy.rules || []
+  /** @type {string[]} */
+  const errors = []
+
+  /** @type {Record<string, EnvironmentConfig>} */
+  let environments = { ...current.environments }
+  // deep-ish copy proxies
+  for (const [id, env] of Object.entries(environments)) {
+    environments[id] = {
+      name: env.name,
+      proxy: {
+        enabled: env.proxy.enabled,
+        target: env.proxy.target,
+        rules: [...(env.proxy.rules || [])],
+        headers: { ...(env.proxy.headers || {}) },
+      },
+    }
+  }
+
+  if (patch.environments !== undefined) {
+    const result = normalizeEnvironmentsInput(patch.environments)
+    if (!result.ok) {
+      return { ok: false, errors: result.errors, value: null }
+    }
+    environments = result.environments
+  }
+
+  let activeEnvironment =
+    patch.activeEnvironment !== undefined
+      ? String(patch.activeEnvironment).trim()
+      : current.activeEnvironment
+
+  if (!environments[activeEnvironment]) {
+    if (patch.activeEnvironment !== undefined) {
+      errors.push(`unknown environment: ${activeEnvironment}`)
+    } else {
+      activeEnvironment = Object.keys(environments)[0]
+    }
+  }
+
+  // Legacy / convenience: patch.proxy updates the *active* environment proxy
+  if (patch.proxy !== undefined && environments[activeEnvironment]) {
+    environments[activeEnvironment] = {
+      ...environments[activeEnvironment],
+      proxy: applyProxyPatch(environments[activeEnvironment].proxy, patch.proxy),
+    }
+  }
+
+  const proxy = resolveEffectiveProxy({ activeEnvironment, environments })
 
   /** @type {RuntimeConfig} */
   const next = {
@@ -303,22 +537,11 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
         : current.description,
     enabled: patch.enabled !== undefined ? Boolean(patch.enabled) : current.enabled,
     port: patch.port !== undefined ? Number(patch.port) : current.port,
-    proxy: {
-      enabled:
-        patch.proxy?.enabled !== undefined
-          ? Boolean(patch.proxy.enabled)
-          : current.proxy.enabled,
-      target:
-        patch.proxy?.target !== undefined
-          ? String(patch.proxy.target).trim()
-          : current.proxy.target,
-      rules: nextRules,
-    },
+    activeEnvironment,
+    environments,
+    proxy,
     managed: current.managed,
   }
-
-  /** @type {string[]} */
-  const errors = []
 
   if (!Number.isInteger(next.port) || next.port < 1 || next.port > 65535) {
     errors.push("port must be an integer between 1 and 65535")
@@ -336,13 +559,14 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
     }
   }
 
-  if (next.proxy.target && !isValidHttpUrl(next.proxy.target)) {
-    errors.push("proxy.target must be an absolute http: or https: URL")
-  }
-
-  for (const rule of next.proxy.rules || []) {
-    if (rule.target && !isValidHttpUrl(rule.target)) {
-      errors.push(`proxy rule ${rule.pathPrefix}: target must be http(s) URL`)
+  for (const [envId, env] of Object.entries(next.environments)) {
+    if (env.proxy.target && !isValidHttpUrl(env.proxy.target)) {
+      errors.push(`environment "${envId}": proxy.target must be an absolute http: or https: URL`)
+    }
+    for (const rule of env.proxy.rules || []) {
+      if (rule.target && !isValidHttpUrl(rule.target)) {
+        errors.push(`environment "${envId}" rule ${rule.pathPrefix}: target must be http(s) URL`)
+      }
     }
   }
 
@@ -396,16 +620,57 @@ export function validateCreateProject(body, fullConfig, codeSlugs) {
     errors.push(`port ${port} 已被占用`)
   }
 
-  const proxyEnabled = Boolean(raw.proxy?.enabled)
-  const proxyTarget =
-    typeof raw.proxy?.target === "string" ? raw.proxy.target.trim() : ""
-  if (proxyTarget && !isValidHttpUrl(proxyTarget)) {
-    errors.push("proxy.target must be an absolute http: or https: URL")
+  /** @type {Record<string, EnvironmentConfig>} */
+  let environments
+  let activeEnvironment = "default"
+
+  if (raw.environments && typeof raw.environments === "object") {
+    const envResult = normalizeEnvironmentsInput(raw.environments)
+    if (!envResult.ok) {
+      errors.push(...envResult.errors)
+      environments = {
+        default: {
+          name: "默认",
+          proxy: { enabled: false, target: "", rules: [], headers: {} },
+        },
+      }
+    } else {
+      environments = envResult.environments
+      const requested =
+        typeof raw.activeEnvironment === "string"
+          ? raw.activeEnvironment.trim()
+          : ""
+      activeEnvironment =
+        requested && environments[requested]
+          ? requested
+          : Object.keys(environments)[0]
+    }
+  } else {
+    const proxyEnabled = Boolean(raw.proxy?.enabled)
+    const proxyTarget =
+      typeof raw.proxy?.target === "string" ? raw.proxy.target.trim() : ""
+    if (proxyTarget && !isValidHttpUrl(proxyTarget)) {
+      errors.push("proxy.target must be an absolute http: or https: URL")
+    }
+    environments = {
+      default: {
+        name: "默认",
+        proxy: {
+          enabled: proxyEnabled,
+          target: proxyTarget,
+          rules: normalizeProxyRules(raw.proxy?.rules),
+          headers: normalizeHeaderMap(raw.proxy?.headers),
+        },
+      },
+    }
+    activeEnvironment = "default"
   }
 
   if (errors.length) {
     return { ok: false, errors, value: null }
   }
+
+  const proxy = resolveEffectiveProxy({ activeEnvironment, environments })
 
   /** @type {RuntimeConfig} */
   const value = {
@@ -413,19 +678,13 @@ export function validateCreateProject(body, fullConfig, codeSlugs) {
     description,
     enabled: raw.enabled !== false,
     port,
-    proxy: {
-      enabled: proxyEnabled,
-      target: proxyTarget,
-      rules: normalizeProxyRules(raw.proxy?.rules),
-    },
+    activeEnvironment,
+    environments,
+    proxy,
     managed: true,
   }
 
   return { ok: true, errors: [], value: { slug, runtime: value } }
-}
-
-export function isValidSlug(slug) {
-  return typeof slug === "string" && SLUG_RE.test(slug)
 }
 
 /**
@@ -441,11 +700,11 @@ export function isValidHttpUrl(value) {
 }
 
 /**
- * @param {string} target
  * @param {boolean} enabled
+ * @param {string} target
  */
 export function isProxyActive(enabled, target) {
   return Boolean(enabled && target && isValidHttpUrl(target))
 }
 
-export { DEFAULT_PORT_START, SLUG_RE }
+export { DEFAULT_PORT_START, SLUG_RE, ENV_ID_RE, normalizeHeaderMap, isValidSlug }

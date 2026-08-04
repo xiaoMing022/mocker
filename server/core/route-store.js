@@ -3,6 +3,7 @@ import path from "node:path"
 import { randomUUID } from "node:crypto"
 
 import { getConfigRoot } from "./paths.js"
+import { normalizeHeaderMap } from "./util/headers.js"
 
 function projectsConfigDir() {
   return path.join(getConfigRoot(), "projects")
@@ -58,7 +59,8 @@ const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
  *   activeScenarioId: string,
  *   scenarios: Scenario[],
  *   note: string,
- *   requestExample: RequestExample | null
+ *   requestExample: RequestExample | null,
+ *   proxyHeaders: Record<string, string>
  * }} DynamicRoute
  */
 
@@ -444,6 +446,7 @@ export function normalizeRoute(input) {
     scenarios,
     note: typeof input.note === "string" ? input.note : "",
     requestExample: normalizeRequestExample(input.requestExample),
+    proxyHeaders: normalizeHeaderMap(input.proxyHeaders),
   }
 }
 
@@ -532,6 +535,10 @@ export function applyRoutePatch(current, patch) {
       patch.requestExample !== undefined
         ? patch.requestExample
         : current.requestExample,
+    proxyHeaders:
+      patch.proxyHeaders !== undefined
+        ? patch.proxyHeaders
+        : current.proxyHeaders,
   }
 
   return normalizeRoute(merged)
