@@ -3,6 +3,7 @@ import express from "express"
 import {
   isProxyActive,
   loadConfig,
+  resolveEffectiveProxy,
   saveConfig,
   validateCreateProject,
   validateProjectPatch,
@@ -16,6 +17,7 @@ import {
   saveRoutes,
   validateRoutesPayload,
 } from "./route-store.js"
+import { createHttpError } from "./util/http-error.js"
 
 /**
  * @param {{
@@ -39,6 +41,28 @@ export function createProjectManager({ codeProjects }) {
 
   /** @type {Map<string, { server: import("node:http").Server | null, status: string, lastError: string | null, warning: string | null }>} */
   const runtime = new Map()
+
+  /** @type {Map<string, Promise<unknown>>} */
+  const startChains = new Map()
+
+  /**
+   * Serialize start/stop-critical work per slug so concurrent pause/update don't race.
+   * @template T
+   * @param {string} slug
+   * @param {() => Promise<T> | T} fn
+   * @returns {Promise<T>}
+   */
+  function enqueueStart(slug, fn) {
+    const prev = startChains.get(slug) || Promise.resolve()
+    const next = prev.catch(() => {}).then(fn)
+    startChains.set(
+      slug,
+      next.finally(() => {
+        if (startChains.get(slug) === next) startChains.delete(slug)
+      }),
+    )
+    return next
+  }
 
   function emptyRouter() {
     return express.Router()
@@ -89,7 +113,7 @@ export function createProjectManager({ codeProjects }) {
 
   function ensureKnown(slug) {
     if (!config.projects[slug]) {
-      throw Object.assign(new Error(`Unknown project: ${slug}`), { statusCode: 404 })
+      throw createHttpError(404, `Unknown project: ${slug}`)
     }
   }
 
@@ -113,12 +137,13 @@ export function createProjectManager({ codeProjects }) {
     const state = runtime.get(slug)
     if (!def || !rt || !state) return null
 
-    const proxyActive = isProxyActive(rt.proxy.enabled, rt.proxy.target)
+    const effectiveProxy = resolveEffectiveProxy(rt)
+    const proxyActive = isProxyActive(effectiveProxy.enabled, effectiveProxy.target)
     let warning = state.warning
-    if (rt.proxy.enabled && !proxyActive) {
+    if (effectiveProxy.enabled && !proxyActive) {
       warning =
         warning ||
-        (rt.proxy.target
+        (effectiveProxy.target
           ? "proxy enabled but target is invalid; forwarding is off"
           : "proxy enabled but target is empty; forwarding is off")
     }
@@ -131,6 +156,19 @@ export function createProjectManager({ codeProjects }) {
       status = "paused"
     }
 
+    const environments = {}
+    for (const [id, env] of Object.entries(rt.environments || {})) {
+      environments[id] = {
+        name: env.name,
+        proxy: {
+          enabled: env.proxy.enabled,
+          target: env.proxy.target,
+          rules: env.proxy.rules || [],
+          headers: env.proxy.headers || {},
+        },
+      }
+    }
+
     return {
       slug: def.slug,
       name: def.name,
@@ -138,11 +176,14 @@ export function createProjectManager({ codeProjects }) {
       enabled: rt.enabled,
       paused: !rt.enabled,
       port: rt.port,
+      activeEnvironment: rt.activeEnvironment || "default",
+      environments,
       proxy: {
-        enabled: rt.proxy.enabled,
-        target: rt.proxy.target,
+        enabled: effectiveProxy.enabled,
+        target: effectiveProxy.target,
         active: proxyActive,
-        rules: rt.proxy.rules || [],
+        rules: effectiveProxy.rules || [],
+        headers: effectiveProxy.headers || {},
       },
       status,
       lastError: state.lastError,
@@ -173,14 +214,14 @@ export function createProjectManager({ codeProjects }) {
     }
   }
 
-  async function startProject(slug) {
+  async function startProjectUnlocked(slug) {
     const def = getProjectDef(slug)
     const rt = config.projects[slug]
     ensureRuntime(slug)
     const state = runtime.get(slug)
 
     if (!def || !rt || !state) {
-      throw new Error(`Unknown project: ${slug}`)
+      throw createHttpError(404, `Unknown project: ${slug}`)
     }
 
     await stopProject(slug)
@@ -198,8 +239,12 @@ export function createProjectManager({ codeProjects }) {
     state.lastError = null
     state.warning = null
 
-    if (rt.proxy.enabled && !isProxyActive(true, rt.proxy.target)) {
-      state.warning = rt.proxy.target
+    const effectiveProxy = resolveEffectiveProxy(rt)
+    // Ensure runtime.proxy mirrors effective (createProjectApp reads runtime.proxy)
+    rt.proxy = effectiveProxy
+
+    if (effectiveProxy.enabled && !isProxyActive(true, effectiveProxy.target)) {
+      state.warning = effectiveProxy.target
         ? "proxy enabled but target is invalid; forwarding is off"
         : "proxy enabled but target is empty; forwarding is off"
     }
@@ -241,6 +286,10 @@ export function createProjectManager({ codeProjects }) {
     })
   }
 
+  async function startProject(slug) {
+    return enqueueStart(slug, () => startProjectUnlocked(slug))
+  }
+
   async function startAll() {
     config = loadConfig(codeProjects)
     for (const slug of allSlugs()) {
@@ -265,10 +314,7 @@ export function createProjectManager({ codeProjects }) {
 
     const result = validateProjectPatch(slug, patch, config, allSlugs())
     if (!result.ok) {
-      const error = new Error(result.errors.join("; "))
-      error.statusCode = 400
-      error.errors = result.errors
-      throw error
+      throw createHttpError(400, result.errors.join("; "), result.errors)
     }
 
     config = {
@@ -302,10 +348,7 @@ export function createProjectManager({ codeProjects }) {
     const codeSlugs = codeProjects.map((p) => p.slug)
     const result = validateCreateProject(body, config, codeSlugs)
     if (!result.ok) {
-      const error = new Error(result.errors.join("; "))
-      error.statusCode = 400
-      error.errors = result.errors
-      throw error
+      throw createHttpError(400, result.errors.join("; "), result.errors)
     }
 
     const { slug, runtime: rt } = result.value
@@ -330,10 +373,7 @@ export function createProjectManager({ codeProjects }) {
   async function deleteProject(slug) {
     ensureKnown(slug)
     if (isCodeProject(slug)) {
-      throw Object.assign(
-        new Error("代码注册项目不能删除，请使用「暂停」停用端口"),
-        { statusCode: 400 },
-      )
+      throw createHttpError(400, "代码注册项目不能删除，请使用「暂停」停用端口")
     }
 
     await stopProject(slug)
@@ -362,10 +402,7 @@ export function createProjectManager({ codeProjects }) {
     ensureKnown(slug)
     const result = validateRoutesPayload(routesInput)
     if (!result.ok) {
-      const error = new Error(result.errors.join("; "))
-      error.statusCode = 400
-      error.errors = result.errors
-      throw error
+      throw createHttpError(400, result.errors.join("; "), result.errors)
     }
     saveRoutes(slug, result.routes)
     setRoutesInMemory(slug, result.routes)
@@ -379,10 +416,7 @@ export function createProjectManager({ codeProjects }) {
     const withId = { ...body, id: body?.id || createRouteId() }
     const result = validateRoutesPayload([...current, withId])
     if (!result.ok) {
-      const error = new Error(result.errors.join("; "))
-      error.statusCode = 400
-      error.errors = result.errors
-      throw error
+      throw createHttpError(400, result.errors.join("; "), result.errors)
     }
     saveRoutes(slug, result.routes)
     setRoutesInMemory(slug, result.routes)
@@ -395,19 +429,16 @@ export function createProjectManager({ codeProjects }) {
     const current = routesBySlug.get(slug) || []
     const idx = current.findIndex((r) => r.id === id)
     if (idx < 0) {
-      throw Object.assign(new Error(`Route not found: ${id}`), { statusCode: 404 })
+      throw createHttpError(404, `Route not found: ${id}`)
     }
     const nextRoute = applyRoutePatch(current[idx], patch)
     if (!nextRoute) {
-      throw Object.assign(new Error("Invalid route patch"), { statusCode: 400 })
+      throw createHttpError(400, "Invalid route patch")
     }
     const next = current.map((r, i) => (i === idx ? nextRoute : r))
     const result = validateRoutesPayload(next)
     if (!result.ok) {
-      const error = new Error(result.errors.join("; "))
-      error.statusCode = 400
-      error.errors = result.errors
-      throw error
+      throw createHttpError(400, result.errors.join("; "), result.errors)
     }
     saveRoutes(slug, result.routes)
     setRoutesInMemory(slug, result.routes)
@@ -420,7 +451,7 @@ export function createProjectManager({ codeProjects }) {
     const current = routesBySlug.get(slug) || []
     const next = current.filter((r) => r.id !== id)
     if (next.length === current.length) {
-      throw Object.assign(new Error(`Route not found: ${id}`), { statusCode: 404 })
+      throw createHttpError(404, `Route not found: ${id}`)
     }
     saveRoutes(slug, next)
     setRoutesInMemory(slug, next)
@@ -433,13 +464,11 @@ export function createProjectManager({ codeProjects }) {
     const current = routesBySlug.get(slug) || []
     const idx = current.findIndex((r) => r.id === routeId)
     if (idx < 0) {
-      throw Object.assign(new Error(`Route not found: ${routeId}`), { statusCode: 404 })
+      throw createHttpError(404, `Route not found: ${routeId}`)
     }
     const route = current[idx]
     if (!route.scenarios.some((s) => s.id === scenarioId)) {
-      throw Object.assign(new Error(`Scenario not found: ${scenarioId}`), {
-        statusCode: 404,
-      })
+      throw createHttpError(404, `Scenario not found: ${scenarioId}`)
     }
     return updateRoute(slug, routeId, { activeScenarioId: scenarioId })
   }
@@ -453,7 +482,7 @@ export function createProjectManager({ codeProjects }) {
     ensureKnown(slug)
     const log = requestLogs.get(slug, id)
     if (!log) {
-      throw Object.assign(new Error(`Log not found: ${id}`), { statusCode: 404 })
+      throw createHttpError(404, `Log not found: ${id}`)
     }
     return log
   }
@@ -475,7 +504,7 @@ export function createProjectManager({ codeProjects }) {
     ensureRuntime(slug)
     const log = requestLogs.get(slug, logId)
     if (!log) {
-      throw Object.assign(new Error(`Log not found: ${logId}`), { statusCode: 404 })
+      throw createHttpError(404, `Log not found: ${logId}`)
     }
 
     const method = String(log.method || "GET").toUpperCase()
@@ -557,10 +586,7 @@ export function createProjectManager({ codeProjects }) {
 
     const result = validateRoutesPayload(routes)
     if (!result.ok) {
-      const error = new Error(result.errors.join("; "))
-      error.statusCode = 400
-      error.errors = result.errors
-      throw error
+      throw createHttpError(400, result.errors.join("; "), result.errors)
     }
     saveRoutes(slug, result.routes)
     setRoutesInMemory(slug, result.routes)
@@ -584,6 +610,16 @@ export function createProjectManager({ codeProjects }) {
     if (!config.projects[slug]) return null
     ensureRuntime(slug)
     return buildView(slug)
+  }
+
+  /**
+   * Switch active environment (proxy upstream) without changing routes.
+   * @param {string} slug
+   * @param {string} environmentId
+   */
+  async function setActiveEnvironment(slug, environmentId) {
+    ensureKnown(slug)
+    return updateProject(slug, { activeEnvironment: environmentId })
   }
 
   function getConfig() {
@@ -618,5 +654,6 @@ export function createProjectManager({ codeProjects }) {
     getLog,
     clearLogs,
     createScenarioFromLog,
+    setActiveEnvironment,
   }
 }
