@@ -74,10 +74,32 @@ export function EnvironmentPanel({ project, onChanged }: Props) {
 
   const viewingDraft = drafts.find((d) => d.id === viewingEnvId) || drafts[0]
 
+  const dirty =
+    JSON.stringify(drafts) !== JSON.stringify(initialDrafts)
+
   const updateDraft = (id: string, patch: Partial<EnvDraft>) => {
     setDrafts((prev) =>
       prev.map((d) => (d.id === id ? { ...d, ...patch } : d)),
     )
+  }
+
+  /** Tab switch only changes viewingEnvId; never activates. Guard unsaved edits. */
+  const handleTabChange = (key: string) => {
+    if (key === viewingEnvId) return
+    if (!dirty) {
+      setViewingEnvId(key)
+      return
+    }
+    Modal.confirm({
+      title: "未保存的更改",
+      content: "切换环境将丢失当前未保存的编辑，是否继续？",
+      okText: "放弃更改并切换",
+      cancelText: "取消",
+      onOk: () => {
+        setDrafts(initialDrafts)
+        setViewingEnvId(key)
+      },
+    })
   }
 
   const persistEnvironments = async (
@@ -225,7 +247,7 @@ export function EnvironmentPanel({ project, onChanged }: Props) {
           type="editable-card"
           hideAdd
           activeKey={viewingEnvId}
-          onChange={(key) => setViewingEnvId(key)}
+          onChange={handleTabChange}
           onEdit={(key, action) => {
             if (action === "remove" && typeof key === "string") {
               void handleDeleteEnvironment(key)
