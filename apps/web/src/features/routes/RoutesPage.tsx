@@ -11,9 +11,11 @@ import {
 } from "antd"
 import type { ColumnsType } from "antd/es/table"
 import { useCallback, useEffect, useMemo, useState } from "react"
+import { MethodTag } from "../../components/MethodTag"
 import { mockApi } from "../../api/client"
 import type { Project, Route } from "../../types"
 import { buildCurlFromRoute } from "../../utils/curl"
+import { showError, toErrorMessage } from "../../utils/errors"
 import { RouteEditorDrawer } from "./RouteEditorDrawer"
 
 type Props = {
@@ -34,7 +36,7 @@ export function RoutesPage({ project, onChanged }: Props) {
       const data = await mockApi.listRoutes(project.slug)
       setRoutes(data.routes || [])
     } catch (e) {
-      message.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     } finally {
       setLoading(false)
     }
@@ -70,7 +72,7 @@ export function RoutesPage({ project, onChanged }: Props) {
               await load()
               await onChanged()
             } catch (e) {
-              message.error(e instanceof Error ? e.message : String(e))
+              showError(e)
             }
           }}
         />
@@ -80,7 +82,7 @@ export function RoutesPage({ project, onChanged }: Props) {
       title: "Method",
       dataIndex: "method",
       width: 90,
-      render: (m: string) => <Tag color="blue">{m}</Tag>,
+      render: (m: string) => <MethodTag method={m} />,
     },
     {
       title: "Path",
@@ -106,7 +108,7 @@ export function RoutesPage({ project, onChanged }: Props) {
               message.success("已切换场景")
               await load()
             } catch (e) {
-              message.error(e instanceof Error ? e.message : String(e))
+              showError(e)
             }
           }}
         />
@@ -212,9 +214,7 @@ export function RoutesPage({ project, onChanged }: Props) {
                 await load()
                 await onChanged()
               } catch (e) {
-                message.error(
-                  `导入失败：${e instanceof Error ? e.message : String(e)}`,
-                )
+                message.error(`导入失败：${toErrorMessage(e)}`)
               }
               return false
             }}

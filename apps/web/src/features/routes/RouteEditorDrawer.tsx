@@ -15,6 +15,12 @@ import { useEffect, useMemo, useState } from "react"
 import { mockApi } from "../../api/client"
 import type { Project, Route, Scenario, ScenarioMode } from "../../types"
 import { buildCurlFromRoute, buildFetchFromRoute } from "../../utils/curl"
+import {
+  KeyValueEditor,
+  recordToRows,
+  rowsToRecord,
+} from "../../components/KeyValueEditor"
+import { showError, toErrorMessage } from "../../utils/errors"
 import { parseJsonArray, parseJsonObject, prettyJson } from "../../utils/json"
 
 type Props = {
@@ -73,6 +79,7 @@ export function RouteEditorDrawer({
         requestExample: route.requestExample
           ? prettyJson(route.requestExample)
           : "",
+        proxyHeaderRows: recordToRows(route.proxyHeaders),
       })
       setScenarios(
         route.scenarios.map((s) => ({
@@ -91,6 +98,7 @@ export function RouteEditorDrawer({
         enabled: true,
         note: "",
         requestExample: "",
+        proxyHeaderRows: [],
       })
       setScenarios([sc])
       setActiveScenarioId(sc.id)
@@ -182,7 +190,7 @@ export function RouteEditorDrawer({
       setScenarios(next)
       return { scenarios: next, activeScenarioId: nextActive }
     } catch (e) {
-      message.error(e instanceof Error ? e.message : String(e))
+      showError(e)
       return null
     }
   }
@@ -199,7 +207,7 @@ export function RouteEditorDrawer({
         "requestExample",
       )
     } catch (e) {
-      message.error(e instanceof Error ? e.message : String(e))
+      showError(e)
       return null
     }
     // Prefer the scenario open in the editor so try/curl match what the user is configuring.
@@ -217,6 +225,7 @@ export function RouteEditorDrawer({
       activeScenarioId: tryScenarioId,
       scenarios: flushed.scenarios,
       requestExample: requestExample as Route["requestExample"],
+      proxyHeaders: rowsToRecord(values.proxyHeaderRows),
     }
   }
 
@@ -240,7 +249,7 @@ export function RouteEditorDrawer({
           "requestExample",
         )
       } catch (e) {
-        message.error(e instanceof Error ? e.message : String(e))
+        showError(e)
         return
       }
 
@@ -253,6 +262,7 @@ export function RouteEditorDrawer({
         activeScenarioId: flushed.activeScenarioId,
         scenarios: flushed.scenarios,
         requestExample,
+        proxyHeaders: rowsToRecord(values.proxyHeaderRows),
       }
 
       setSaving(true)
@@ -266,8 +276,7 @@ export function RouteEditorDrawer({
       await onSaved()
       onClose()
     } catch (e) {
-      if (e && typeof e === "object" && "errorFields" in e) return
-      message.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     } finally {
       setSaving(false)
     }
@@ -315,8 +324,8 @@ export function RouteEditorDrawer({
         message.success(`试请求完成 ${res.status}`)
       }
     } catch (e) {
-      setTryResult(`请求失败：${e instanceof Error ? e.message : String(e)}`)
-      message.error(e instanceof Error ? e.message : String(e))
+      setTryResult(`请求失败：${toErrorMessage(e)}`)
+      showError(e)
     } finally {
       setTrying(false)
     }
@@ -346,7 +355,7 @@ export function RouteEditorDrawer({
                   await onSaved()
                   onClose()
                 } catch (e) {
-                  message.error(e instanceof Error ? e.message : String(e))
+                  showError(e)
                 }
               }}
             >
@@ -417,6 +426,16 @@ export function RouteEditorDrawer({
             className="mono"
             placeholder='{"headers":{},"query":{},"body":{}}'
           />
+        </Form.Item>
+        <Form.Item
+          name="proxyHeaderRows"
+          label="转发附加请求头"
+          extra="当请求未命中 Mock 而走 Proxy 时，在全量转发前端请求头之后，再附加/覆盖这些头。"
+          getValueFromEvent={(rows) => rows}
+          trigger="onChange"
+          valuePropName="value"
+        >
+          <KeyValueEditor addLabel="添加转发请求头" />
         </Form.Item>
       </Form>
 

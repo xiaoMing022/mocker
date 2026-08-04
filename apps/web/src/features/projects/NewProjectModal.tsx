@@ -22,7 +22,7 @@ export function NewProjectModal({ open, loading, onCancel, onSubmit }: Props) {
 
   return (
     <Modal
-      title="新建项目"
+      title="在 Mocker 中新建项目"
       open={open}
       onCancel={onCancel}
       onOk={() => form.submit()}

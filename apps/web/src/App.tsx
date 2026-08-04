@@ -1,5 +1,4 @@
 import {
-  ApiOutlined,
   CloudServerOutlined,
   MoonOutlined,
   PauseCircleOutlined,
@@ -30,9 +29,12 @@ import {
 import zhCN from "antd/locale/zh_CN"
 import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react"
 import { mockApi } from "./api/client"
+import { ProjectStatusTag } from "./components/ProjectStatusTag"
 import { NewProjectModal } from "./features/projects/NewProjectModal"
 import { useHashRoute } from "./hooks/useHashRoute"
 import type { Project, TabKey } from "./types"
+import { showError } from "./utils/errors"
+import { statusBadge, statusLabel } from "./utils/projectStatus"
 import "./App.css"
 
 const OverviewPage = lazy(() =>
@@ -61,34 +63,9 @@ declare global {
   }
 }
 
-function statusBadge(status: string): "success" | "error" | "default" | "warning" | "processing" {
-  if (status === "listening") return "success"
-  if (status === "error") return "error"
-  if (status === "paused") return "warning"
-  if (status === "starting") return "processing"
-  return "default"
-}
-
-function statusTagColor(status: string) {
-  if (status === "listening") return "success"
-  if (status === "error") return "error"
-  if (status === "paused") return "warning"
-  if (status === "starting") return "processing"
-  return "default"
-}
-
-function statusLabel(status: string) {
-  if (status === "paused") return "已暂停"
-  if (status === "listening") return "运行中"
-  if (status === "starting") return "启动中"
-  if (status === "error") return "错误"
-  if (status === "stopped") return "已停止"
-  return status
-}
-
 function TabFallback() {
   return (
-    <div style={{ padding: 48, textAlign: "center" }}>
+    <div className="tab-fallback">
       <Spin tip="加载中…" />
     </div>
   )
@@ -134,7 +111,7 @@ function AppInner() {
           setSlug(list[0].slug, tab)
         }
       } catch (e) {
-        message.error(e instanceof Error ? e.message : String(e))
+        showError(e)
       } finally {
         setLoading(false)
       }
@@ -188,7 +165,7 @@ function AppInner() {
       }
       await refresh({ keepSelection: true })
     } catch (e) {
-      message.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     } finally {
       setActionLoading(false)
     }
@@ -200,34 +177,52 @@ function AppInner() {
       theme={{
         algorithm: isDark ? theme.darkAlgorithm : theme.defaultAlgorithm,
         token: {
-          colorPrimary: "#2f5bea",
-          borderRadius: 8,
+          colorPrimary: isDark ? "#2dd4bf" : "#0f766e",
+          colorInfo: isDark ? "#2dd4bf" : "#0f766e",
+          colorSuccess: isDark ? "#34d399" : "#059669",
+          colorWarning: isDark ? "#fbbf24" : "#d97706",
+          colorError: isDark ? "#fb7185" : "#e11d48",
+          borderRadius: 10,
           fontFamily:
-            '"Plus Jakarta Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
-          colorBgLayout: isDark ? "#0b1220" : "#f3f5f9",
-          colorBgContainer: isDark ? "#121a2b" : "#ffffff",
-          colorBorder: isDark ? "rgba(255,255,255,0.08)" : "rgba(15,23,42,0.08)",
+            '"DM Sans", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif',
+          fontFamilyCode:
+            '"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace',
+          colorBgLayout: isDark ? "#070d0c" : "#f0f4f3",
+          colorBgContainer: isDark ? "#0f1816" : "#ffffff",
+          colorBorder: isDark ? "rgba(255,255,255,0.07)" : "rgba(15,35,32,0.08)",
+          colorText: isDark ? "rgba(240,253,250,0.92)" : "rgba(12,24,22,0.92)",
+          colorTextSecondary: isDark
+            ? "rgba(240,253,250,0.58)"
+            : "rgba(12,24,22,0.56)",
         },
         components: {
           Layout: {
             headerBg: "transparent",
             bodyBg: "transparent",
-            siderBg: isDark ? "#0f1729" : "#ffffff",
+            siderBg: isDark ? "#0a1210" : "#fbfcfc",
           },
           Menu: {
             itemBg: "transparent",
             itemSelectedBg: isDark
-              ? "rgba(107,140,255,0.14)"
-              : "rgba(47,91,234,0.1)",
+              ? "rgba(45,212,191,0.12)"
+              : "rgba(15,118,110,0.1)",
             itemHoverBg: isDark
-              ? "rgba(107,140,255,0.1)"
-              : "rgba(47,91,234,0.06)",
+              ? "rgba(45,212,191,0.08)"
+              : "rgba(15,118,110,0.06)",
+            itemSelectedColor: isDark ? "#5eead4" : "#0f766e",
           },
           Tabs: {
             titleFontSize: 14,
+            inkBarColor: isDark ? "#2dd4bf" : "#0f766e",
           },
           Button: {
             controlHeight: 32,
+            primaryShadow: isDark
+              ? "0 4px 12px rgba(45,212,191,0.2)"
+              : "0 4px 12px rgba(15,118,110,0.22)",
+          },
+          Card: {
+            headerFontSize: 14,
           },
         },
       }}
@@ -235,16 +230,15 @@ function AppInner() {
       <Layout className={`app-shell ${isDark ? "theme-dark" : "theme-light"}`}>
         <Header className="app-header">
           <div className="brand">
-            <div className="brand-mark">
-              <ApiOutlined />
+            <div className="brand-mark" aria-hidden>
+              M
             </div>
             <div className="brand-text">
               <Typography.Title level={4} className="brand-title">
-                Mock Server
+                Mocker<span className="brand-dot">.</span>
               </Typography.Title>
               <Typography.Text className="brand-sub">
-                {isDesktop ? "桌面端 · " : "Web · "}
-                多项目 Mock 工作台
+                {isDesktop ? "桌面端" : "Web"} · 本地多项目 Mock 工作台
               </Typography.Text>
             </div>
           </div>
@@ -254,8 +248,8 @@ function AppInner() {
               color={healthOk ? "success" : "error"}
             >
               {healthOk
-                ? `服务正常 · ${projects.length} 项目${pausedCount ? ` · ${pausedCount} 暂停` : ""}`
-                : "管理端不可用"}
+                ? `在线 · ${projects.length} 项目${pausedCount ? ` · ${pausedCount} 暂停` : ""}`
+                : "管理端离线"}
             </Tag>
             <Tooltip title={isDark ? "切换浅色" : "切换深色"}>
               <Button
@@ -275,83 +269,92 @@ function AppInner() {
 
         <Layout className="app-body">
           <Sider
-            width={288}
+            width={300}
             theme={isDark ? "dark" : "light"}
             className="app-sider"
           >
-            <div className="sider-head">
-              <span className="title">Projects</span>
-              <Button
-                type="primary"
-                size="small"
-                icon={<PlusOutlined />}
-                onClick={() => setNewOpen(true)}
-              >
-                新建
-              </Button>
-            </div>
-            <div className="sider-search">
-              <Input.Search
-                allowClear
-                placeholder="筛选名称 / slug / 端口"
-                value={projectFilter}
-                onChange={(e) => setProjectFilter(e.target.value)}
-              />
-            </div>
-            {loading && !projects.length ? (
-              <div style={{ padding: 24, textAlign: "center" }}>
-                <Spin />
+            <div className="sider-inner">
+              <div className="sider-head">
+                <span className="title">Projects</span>
+                <Button
+                  type="primary"
+                  size="small"
+                  icon={<PlusOutlined />}
+                  onClick={() => setNewOpen(true)}
+                >
+                  新建
+                </Button>
               </div>
-            ) : (
-              <Menu
-                mode="inline"
-                theme={isDark ? "dark" : "light"}
-                className="project-menu"
-                selectedKeys={slug ? [slug] : []}
-                onClick={({ key }) => setSlug(key)}
-                items={filteredProjects.map((p) => {
-                  const paused = p.paused || !p.enabled
-                  return {
-                    key: p.slug,
-                    icon: paused ? (
-                      <PauseCircleOutlined style={{ color: "#d48806" }} />
-                    ) : (
-                      <CloudServerOutlined />
-                    ),
-                    className: paused ? "project-menu-paused" : undefined,
-                    label: (
-                      <div className="project-item-label">
-                        <div className="name">
-                          {p.name}
-                          {paused && (
-                            <Tag
-                              color="warning"
-                              style={{ marginInlineStart: 4, fontSize: 11 }}
-                            >
-                              暂停
-                            </Tag>
-                          )}
-                        </div>
-                        <div className="meta">
-                          <Badge status={statusBadge(p.status)} />
-                          <span>
-                            {statusLabel(p.status)} · :{p.port} ·{" "}
-                            {p.routeCount ?? 0} 接口
-                          </span>
-                        </div>
-                      </div>
-                    ),
-                  }
-                })}
-              />
-            )}
-            {!loading && filteredProjects.length === 0 && (
-              <div className="sider-empty">
-                {projects.length === 0
-                  ? "暂无项目，点击上方新建"
-                  : "无匹配项目"}
+              <div className="sider-search">
+                <Input.Search
+                  allowClear
+                  placeholder="名称 / slug / 端口"
+                  value={projectFilter}
+                  onChange={(e) => setProjectFilter(e.target.value)}
+                />
               </div>
-            )}
+              {loading && !projects.length ? (
+                <div style={{ padding: 24, textAlign: "center" }}>
+                  <Spin />
+                </div>
+              ) : (
+                <Menu
+                  mode="inline"
+                  theme={isDark ? "dark" : "light"}
+                  className="project-menu"
+                  selectedKeys={slug ? [slug] : []}
+                  onClick={({ key }) => setSlug(key)}
+                  items={filteredProjects.map((p) => {
+                    const paused = p.paused || !p.enabled
+                    return {
+                      key: p.slug,
+                      icon: paused ? (
+                        <PauseCircleOutlined style={{ color: "var(--ms-warning)" }} />
+                      ) : (
+                        <CloudServerOutlined />
+                      ),
+                      className: paused ? "project-menu-paused" : undefined,
+                      label: (
+                        <div className="project-item-label">
+                          <div className="name">
+                            {p.name}
+                            {paused && (
+                              <Tag
+                                color="warning"
+                                style={{ marginInlineStart: 4, fontSize: 11 }}
+                              >
+                                暂停
+                              </Tag>
+                            )}
+                          </div>
+                          <div className="meta">
+                            <Badge status={statusBadge(p.status)} />
+                            <span>
+                              {statusLabel(p.status)} · :{p.port} ·{" "}
+                              {p.routeCount ?? 0} 接口
+                            </span>
+                          </div>
+                        </div>
+                      ),
+                    }
+                  })}
+                />
+              )}
+              {!loading && filteredProjects.length === 0 && (
+                <div className="sider-empty">
+                  {projects.length === 0
+                    ? "暂无项目，点击上方新建"
+                    : "无匹配项目"}
+                </div>
+              )}
+              <div className="sider-footer">
+                <span>Mocker</span>
+                <span className="mono-port">
+                  {projects.filter((p) => p.enabled && p.status === "listening").length}/
+                  {projects.length} 运行中
+                </span>
+              </div>
+            </div>
           </Sider>
 
           <Content className="app-content">
@@ -361,14 +364,14 @@ function AppInner() {
                   <CloudServerOutlined />
                 </div>
                 <Typography.Title level={4} style={{ marginBottom: 8 }}>
-                  选择或新建一个项目
+                  开始使用 Mocker
                 </Typography.Title>
                 <Typography.Paragraph
                   type="secondary"
-                  style={{ maxWidth: 420, margin: "0 auto 20px" }}
+                  style={{ maxWidth: 400, margin: "0 auto 22px" }}
                 >
-                  左侧选择项目进入工作台。暂停会释放端口，配置与 Mock
-                  路由完整保留。
+                  在左侧选择项目进入工作台，或新建一个配置驱动的 Mock 项目。
+                  暂停会释放端口，配置与接口场景完整保留。
                 </Typography.Paragraph>
                 <Button
                   type="primary"
@@ -386,29 +389,38 @@ function AppInner() {
                     <Typography.Title level={3} style={{ margin: 0 }}>
                       {current.name}
                     </Typography.Title>
-                    <Space size="small" wrap style={{ marginTop: 8 }}>
-                      <Typography.Text type="secondary" code>
+                    <div className="ws-head-meta">
+                      <Typography.Text className="ws-slug" code>
                         {current.slug}
                       </Typography.Text>
-                      <Tag color={statusTagColor(current.status)}>
-                        {statusLabel(current.status)}
-                      </Tag>
+                      <ProjectStatusTag project={current} />
+                      {current.activeEnvironment && (
+                        <Tag color="cyan">
+                          环境 ·{" "}
+                          {current.environments?.[current.activeEnvironment]
+                            ?.name || current.activeEnvironment}
+                        </Tag>
+                      )}
                       {current.url && (
-                        <Typography.Link href={current.url} target="_blank">
+                        <Typography.Link
+                          className="ws-url"
+                          href={current.url}
+                          target="_blank"
+                        >
                           {current.url}
                         </Typography.Link>
                       )}
-                    </Space>
+                    </div>
                     {current.description && (
                       <Typography.Paragraph
                         type="secondary"
-                        style={{ marginTop: 8, marginBottom: 0 }}
+                        style={{ marginTop: 10, marginBottom: 0, maxWidth: 640 }}
                       >
                         {current.description}
                       </Typography.Paragraph>
                     )}
                   </div>
-                  <Space wrap className="no-drag">
+                  <Space wrap className="no-drag ws-actions">
                     <Button
                       onClick={async () => {
                         if (!current.url) return
@@ -587,7 +599,7 @@ function AppInner() {
             setSlug(res.project?.slug || values.slug, "routes")
             await refresh({ keepSelection: true })
           } catch (e) {
-            message.error(e instanceof Error ? e.message : String(e))
+            showError(e)
             throw e
           } finally {
             setCreating(false)

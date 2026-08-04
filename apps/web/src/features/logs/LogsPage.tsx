@@ -16,6 +16,7 @@ import { useCallback, useEffect, useState } from "react"
 import { mockApi } from "../../api/client"
 import type { Project, RequestLog } from "../../types"
 import { buildCurlFromLog } from "../../utils/curl"
+import { showError } from "../../utils/errors"
 import { prettyJson } from "../../utils/json"
 
 type Props = {
@@ -60,7 +61,7 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
       })
       setLogs(data.logs || [])
     } catch (e) {
-      message.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     } finally {
       setLoading(false)
     }
@@ -81,7 +82,7 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
       const data = await mockApi.getLog(project.slug, id)
       setSelected(data.log)
     } catch (e) {
-      message.error(e instanceof Error ? e.message : String(e))
+      showError(e)
     }
   }
 
@@ -189,7 +190,7 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
               message.success("日志已清空")
               await load()
             } catch (e) {
-              message.error(e instanceof Error ? e.message : String(e))
+              showError(e)
             }
           }}
         >
@@ -318,7 +319,7 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
                     )
                     onRoutesMaybeChanged?.()
                   } catch (e) {
-                    message.error(e instanceof Error ? e.message : String(e))
+                    showError(e)
                   } finally {
                     setSaving(false)
                   }
