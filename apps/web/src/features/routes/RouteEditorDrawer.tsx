@@ -14,14 +14,21 @@ import {
 import { useEffect, useMemo, useState } from "react"
 import { mockApi } from "../../api/client"
 import type { Project, Route, Scenario, ScenarioMode } from "../../types"
-import { buildCurlFromRoute, buildFetchFromRoute } from "../../utils/curl"
+import { buildCurlFromRoute } from "../../utils/curl"
 import {
   KeyValueEditor,
   recordToRows,
   rowsToRecord,
 } from "../../components/KeyValueEditor"
-import { showError, toErrorMessage } from "../../utils/errors"
-import { parseJsonArray, parseJsonObject, prettyJson } from "../../utils/json"
+import { showError } from "../../utils/errors"
+import { parseJsonObject, prettyJson } from "../../utils/json"
+import {
+  DEFAULT_SSE_EVENTS,
+  flushScenariosFromForm,
+  newScenario,
+  type ScenarioFormValues,
+} from "./scenarioForm"
+import { useTryRequest } from "./useTryRequest"
 
 type Props = {
   open: boolean
@@ -29,25 +36,6 @@ type Props = {
   route: Route | null
   onClose: () => void
   onSaved: () => Promise<void>
-}
-
-const DEFAULT_SSE_EVENTS = [
-  { data: { delta: "你" }, delayMs: 50 },
-  { data: { delta: "好" }, delayMs: 50 },
-]
-
-function newScenario(name = "默认"): Scenario {
-  return {
-    id: crypto.randomUUID(),
-    name,
-    statusCode: 200,
-    delayMs: 0,
-    response: { code: 200, message: "success", data: {} },
-    headers: {},
-    match: null,
-    mode: "json",
-    stream: null,
-  }
 }
 
 export function RouteEditorDrawer({
@@ -62,8 +50,9 @@ export function RouteEditorDrawer({
   const [activeScenarioId, setActiveScenarioId] = useState("")
   const [editingScenarioId, setEditingScenarioId] = useState("")
   const [saving, setSaving] = useState(false)
-  const [tryResult, setTryResult] = useState("")
-  const [trying, setTrying] = useState(false)
+  const { tryResult, trying, run: runTry, clear: clearTry } = useTryRequest(
+    project,
+  )
 
   const isNew = !route?.id
 
@@ -104,8 +93,8 @@ export function RouteEditorDrawer({
       setActiveScenarioId(sc.id)
       setEditingScenarioId(sc.id)
     }
-    setTryResult("")
-  }, [open, route, form])
+    clearTry()
+  }, [open, route, form, clearTry])
 
   const editing = useMemo(
     () => scenarios.find((s) => s.id === editingScenarioId) || scenarios[0],
@@ -136,59 +125,17 @@ export function RouteEditorDrawer({
     scenarios: Scenario[]
     activeScenarioId: string
   } | null => {
-    if (!editing) return { scenarios, activeScenarioId }
     try {
-      const values = scForm.getFieldsValue()
-      const mode: ScenarioMode = values.mode === "sse" ? "sse" : "json"
-      const headers =
-        (parseJsonObject(values.headers || "{}", "Headers") as Record<
-          string,
-          string
-        >) || {}
-      const matchRaw = String(values.match || "").trim()
-      const match = matchRaw
-        ? (parseJsonObject(matchRaw, "match") as Scenario["match"])
-        : null
-
-      let response: unknown = editing.response ?? {}
-      let stream: Scenario["stream"] = null
-
-      if (mode === "sse") {
-        const eventsRaw = parseJsonArray(
-          values.streamEvents || "[]",
-          "stream.events",
-        )
-        stream = {
-          events: eventsRaw as NonNullable<Scenario["stream"]>["events"],
-          endWithDone: Boolean(values.endWithDone),
-          keepAliveMs: Number(values.keepAliveMs) || 0,
-        }
-        response = editing.response ?? {}
-      } else {
-        response = parseJsonObject(values.response || "{}", "Response") ?? {}
-        stream = null
-      }
-
-      const nextActive = values.isActive ? editing.id : activeScenarioId
-      if (values.isActive) setActiveScenarioId(editing.id)
-
-      const next = scenarios.map((s) =>
-        s.id === editing.id
-          ? {
-              ...s,
-              name: String(values.name || "").trim() || "未命名场景",
-              statusCode: Number(values.statusCode) || 200,
-              delayMs: Number(values.delayMs) || 0,
-              mode,
-              response,
-              stream,
-              headers,
-              match,
-            }
-          : s,
-      )
-      setScenarios(next)
-      return { scenarios: next, activeScenarioId: nextActive }
+      const values = scForm.getFieldsValue() as ScenarioFormValues
+      const result = flushScenariosFromForm({
+        scenarios,
+        editing,
+        activeScenarioId,
+        values,
+      })
+      if (values.isActive && editing) setActiveScenarioId(editing.id)
+      setScenarios(result.scenarios)
+      return result
     } catch (e) {
       showError(e)
       return null
@@ -285,50 +232,7 @@ export function RouteEditorDrawer({
   const tryRequest = async () => {
     const temp = buildTempRoute()
     if (!temp) return
-    if (!project.url || project.paused || !project.enabled) {
-      message.error("项目已暂停或未监听，请先「恢复运行」后再试请求")
-      return
-    }
-    const { url, init, isSse } = buildFetchFromRoute(temp, project)
-    const started = performance.now()
-    setTrying(true)
-    try {
-      const res = await fetch(url, init)
-      const ct = res.headers.get("content-type") || ""
-      const treatAsSse =
-        isSse || ct.includes("text/event-stream") || ct.includes("event-stream")
-
-      if (treatAsSse && res.body) {
-        const reader = res.body.getReader()
-        const decoder = new TextDecoder()
-        let text = ""
-        while (true) {
-          const { done, value } = await reader.read()
-          if (done) break
-          text += decoder.decode(value, { stream: true })
-        }
-        text += decoder.decode()
-        const ms = Math.round(performance.now() - started)
-        setTryResult(`HTTP ${res.status} · ${ms}ms · SSE stream\n${text}`)
-        message.success(`试请求完成 ${res.status} (SSE)`)
-      } else {
-        const text = await res.text()
-        let body = text
-        try {
-          body = prettyJson(JSON.parse(text))
-        } catch {
-          /* keep */
-        }
-        const ms = Math.round(performance.now() - started)
-        setTryResult(`HTTP ${res.status} · ${ms}ms\n${body}`)
-        message.success(`试请求完成 ${res.status}`)
-      }
-    } catch (e) {
-      setTryResult(`请求失败：${toErrorMessage(e)}`)
-      showError(e)
-    } finally {
-      setTrying(false)
-    }
+    await runTry(temp)
   }
 
   const modeWatch = Form.useWatch("mode", scForm) as ScenarioMode | undefined
