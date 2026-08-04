@@ -228,11 +228,13 @@ export function RoutesPage({ project, onChanged }: Props) {
       </Space>
 
       <Table
+        className="ms-table-scroll"
         size="small"
         rowKey="id"
         loading={loading}
         columns={columns}
         dataSource={filtered}
+        scroll={{ x: "max-content" }}
         pagination={{ pageSize: 20 }}
       />
 

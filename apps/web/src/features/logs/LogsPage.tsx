@@ -13,6 +13,7 @@ import {
 import type { ColumnsType } from "antd/es/table"
 import dayjs from "dayjs"
 import { useCallback, useEffect, useState } from "react"
+import { MethodTag } from "../../components/MethodTag"
 import { mockApi } from "../../api/client"
 import type { Project, RequestLog } from "../../types"
 import { buildCurlFromLog } from "../../utils/curl"
@@ -97,7 +98,7 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
       title: "Method",
       dataIndex: "method",
       width: 90,
-      render: (m: string) => <Tag>{m}</Tag>,
+      render: (m: string) => <MethodTag method={m} />,
     },
     {
       title: "Path",
@@ -203,11 +204,13 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
       </Typography.Text>
 
       <Table
+        className="ms-table-scroll"
         size="small"
         rowKey="id"
         loading={loading}
         columns={columns}
         dataSource={logs}
+        scroll={{ x: "max-content" }}
         pagination={{ pageSize: 50, showSizeChanger: false }}
         onRow={(row) => ({
           onClick: () => void openDetail(row.id),
@@ -252,7 +255,7 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
         {selected && (
           <Space direction="vertical" size="middle" style={{ width: "100%" }}>
             <Space wrap>
-              <Tag>{selected.method}</Tag>
+              <MethodTag method={selected.method} />
               <Tag color={statusColor(selected.status)}>
                 {selected.status ?? "—"}
               </Tag>

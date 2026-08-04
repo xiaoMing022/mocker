@@ -84,7 +84,8 @@ function mergeWithCodeProjects(raw, codeProjects) {
       // config-only projects are always managed from console
       managed: true,
     }
-    if (existing.enabled) usedPorts.add(existing.port)
+    // Paused projects still reserve ports
+    usedPorts.add(existing.port)
   }
 
   // 2) Code-registered projects
@@ -98,7 +99,7 @@ function mergeWithCodeProjects(raw, codeProjects) {
         description:
           existing.description !== undefined ? existing.description : undefined,
       }
-      if (existing.enabled) usedPorts.add(existing.port)
+      usedPorts.add(existing.port)
       continue
     }
 

@@ -1,8 +1,10 @@
 import express from "express"
 
 import {
+  allocatePort,
   isProxyActive,
   loadConfig,
+  resolveAdminPort,
   resolveEffectiveProxy,
   saveConfig,
   validateCreateProject,
@@ -167,9 +169,101 @@ export function createProjectManager({ codeProjects }) {
     }
   }
 
+  /**
+   * Ports reserved by admin + every other project (enabled or paused).
+   * Paused projects still hold their configured port so resume is reliable.
+   * @param {string} [exceptSlug]
+   */
+  function collectUsedPorts(exceptSlug) {
+    const used = new Set([resolveAdminPort(config)])
+    for (const [s, p] of Object.entries(config.projects)) {
+      if (s === exceptSlug) continue
+      if (p?.port) used.add(p.port)
+    }
+    return used
+  }
+
+  function isAddrInUseError(error) {
+    if (!error) return false
+    if (error.code === "EADDRINUSE") return true
+    return /EADDRINUSE|address already in use/i.test(String(error.message || error))
+  }
+
+  /**
+   * Resolve config port collisions. Paused projects reserve first so their
+   * ports are not handed to projects that start later.
+   */
+  function reassignConflictingPortsInConfig() {
+    const used = new Set([resolveAdminPort(config)])
+    let dirty = false
+    /** @type {string[]} */
+    const notes = []
+
+    /**
+     * @param {string} slug
+     * @param {import("./config-store.js").RuntimeConfig} rt
+     */
+    function claimOrReassign(slug, rt) {
+      if (!used.has(rt.port)) {
+        used.add(rt.port)
+        return
+      }
+      const old = rt.port
+      const next = allocatePort(used, old + 1)
+      rt.port = next
+      used.add(next)
+      dirty = true
+      notes.push(`${slug}: ${old}→${next}`)
+      console.warn(
+        `[project:${slug}] port ${old} conflicts with a reserved port; auto-switched to ${next}`,
+      )
+    }
+
+    // 1) Paused / disabled first — they keep (or lightly reassign among themselves)
+    for (const slug of allSlugs()) {
+      const rt = config.projects[slug]
+      if (!rt || rt.enabled) continue
+      claimOrReassign(slug, rt)
+    }
+
+    // 2) Enabled projects — never steal a paused project's reserved port
+    for (const slug of allSlugs()) {
+      const rt = config.projects[slug]
+      if (!rt || !rt.enabled) continue
+      claimOrReassign(slug, rt)
+    }
+
+    if (dirty) {
+      saveConfig(config)
+      if (notes.length) {
+        console.warn(`[config] reassigned conflicting ports: ${notes.join(", ")}`)
+      }
+    }
+    return dirty
+  }
+
+  /**
+   * @param {import("express").Express} app
+   * @param {number} port
+   * @returns {Promise<import("node:http").Server>}
+   */
+  function listenOnce(app, port) {
+    return new Promise((resolve, reject) => {
+      const server = app.listen(port, () => resolve(server))
+      server.once("error", (error) => {
+        try {
+          server.close()
+        } catch {
+          /* ignore */
+        }
+        reject(error)
+      })
+    })
+  }
+
   async function startProjectUnlocked(slug) {
     const def = getProjectDef(slug)
-    const rt = config.projects[slug]
+    let rt = config.projects[slug]
     ensureRuntime(slug)
     const state = runtime.get(slug)
 
@@ -192,31 +286,53 @@ export function createProjectManager({ codeProjects }) {
     state.lastError = null
     state.warning = null
 
+    // Prefer a free port if config collides with another project's reserved port
+    // (including paused projects — they still hold their port for resume).
+    {
+      const used = collectUsedPorts(slug)
+      if (used.has(rt.port)) {
+        const old = rt.port
+        const next = allocatePort(used, old + 1)
+        rt.port = next
+        config.projects[slug] = rt
+        saveConfig(config)
+        state.warning = `port ${old} 已被其他项目预留，已自动切换到 ${next}`
+        console.warn(
+          `[project:${slug}] port ${old} reserved by another project; auto-switched to ${next}`,
+        )
+      }
+    }
+
     const effectiveProxy = resolveEffectiveProxy(rt)
     // Ensure runtime.proxy mirrors effective (createProjectApp reads runtime.proxy)
     rt.proxy = effectiveProxy
 
     if (effectiveProxy.enabled && !isProxyActive(true, effectiveProxy.target)) {
-      state.warning = effectiveProxy.target
+      const proxyWarn = effectiveProxy.target
         ? "proxy enabled but target is invalid; forwarding is off"
         : "proxy enabled but target is empty; forwarding is off"
+      state.warning = state.warning ? `${state.warning}; ${proxyWarn}` : proxyWarn
     }
 
     if (!routesBySlug.has(slug)) {
       routesBySlug.set(slug, loadRoutes(slug))
     }
 
-    const app = createProjectApp({
-      project: def,
-      runtime: rt,
-      getRoutes: () => routesBySlug.get(slug) || [],
-      onRequestLog: (entry) => {
-        requestLogs.append(slug, entry)
-      },
-    })
+    const maxAttempts = 25
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      // Re-read in case port was updated mid-loop
+      rt = config.projects[slug]
+      const app = createProjectApp({
+        project: def,
+        runtime: rt,
+        getRoutes: () => routesBySlug.get(slug) || [],
+        onRequestLog: (entry) => {
+          requestLogs.append(slug, entry)
+        },
+      })
 
-    await new Promise((resolve, reject) => {
-      const server = app.listen(rt.port, () => {
+      try {
+        const server = await listenOnce(app, rt.port)
         state.server = server
         state.status = "listening"
         state.lastError = null
@@ -224,19 +340,31 @@ export function createProjectManager({ codeProjects }) {
           `[project:${slug}] listening on http://localhost:${rt.port}` +
             (state.warning ? ` (warning: ${state.warning})` : ""),
         )
-        resolve()
-      })
+        return
+      } catch (error) {
+        if (!isAddrInUseError(error) || attempt === maxAttempts - 1) {
+          state.server = null
+          state.status = "error"
+          state.lastError =
+            error instanceof Error ? error.message : String(error)
+          console.error(
+            `[project:${slug}] failed to listen on ${rt.port}: ${state.lastError}`,
+          )
+          return
+        }
 
-      server.on("error", (error) => {
-        state.server = null
-        state.status = "error"
-        state.lastError = error.message
-        console.error(`[project:${slug}] failed to listen on ${rt.port}: ${error.message}`)
-        reject(error)
-      })
-    }).catch(() => {
-      // status already set
-    })
+        const used = collectUsedPorts(slug)
+        used.add(rt.port)
+        const old = rt.port
+        const next = allocatePort(used, old + 1)
+        rt.port = next
+        config.projects[slug] = rt
+        saveConfig(config)
+        const note = `port ${old} 已被占用，已自动切换到 ${next}`
+        state.warning = state.warning ? `${state.warning}; ${note}` : note
+        console.warn(`[project:${slug}] ${note}`)
+      }
+    }
   }
 
   async function startProject(slug) {
@@ -245,6 +373,7 @@ export function createProjectManager({ codeProjects }) {
 
   async function startAll() {
     config = loadConfig(codeProjects)
+    reassignConflictingPortsInConfig()
     for (const slug of allSlugs()) {
       ensureRuntime(slug)
       routesBySlug.set(slug, loadRoutes(slug))

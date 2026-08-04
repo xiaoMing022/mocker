@@ -7,13 +7,15 @@
   background-attachment: fixed;
 }
 
+.app-header.ant-layout-header,
 .app-header {
-  display: flex;
-  align-items: center;
+  display: flex !important;
+  align-items: center !important;
   justify-content: space-between;
   height: var(--ms-header-h) !important;
-  line-height: var(--ms-header-h) !important;
-  padding: 0 20px 0 24px;
+  /* ant Header defaults line-height=height, which misaligns flex icons */
+  line-height: normal !important;
+  padding: 0 20px 0 24px !important;
   background: var(--ms-header) !important;
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   box-shadow:
@@ -129,10 +131,46 @@ body.desktop-shell .app-header {
   gap: 8px;
   position: relative;
   z-index: 1;
+  height: 100%;
 }
 
 .header-actions .ant-btn {
   border-radius: 9px;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  height: 32px;
+  padding-inline: 12px;
+  line-height: 1 !important;
+}
+
+.header-actions .ant-btn .anticon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
+  font-size: 14px;
+  vertical-align: 0;
+}
+
+.header-actions .ant-btn > span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.header-actions .ant-btn.ant-btn-icon-only {
+  width: 32px;
+  padding-inline: 0;
+}
+
+.brand-title.ant-typography {
+  margin: 0 !important;
+  line-height: 1.2 !important;
+}
+
+.brand-sub.ant-typography {
+  line-height: 1.25 !important;
 }
 
 .header-actions .ant-btn-default {
@@ -160,10 +198,14 @@ body.desktop-shell .app-header {
   border: 0 !important;
   border-radius: 999px !important;
   padding-inline: 11px !important;
+  margin-inline: 0 !important;
   font-weight: 500;
-  line-height: 22px;
+  line-height: 22px !important;
+  height: 24px;
   font-size: 12px !important;
   letter-spacing: 0.01em;
+  display: inline-flex !important;
+  align-items: center !important;
 }
 
 /* ── Body layout ───────────────────────────────────────── */
@@ -527,11 +569,30 @@ body.desktop-shell .app-header {
 
 .app-content .ant-table-wrapper {
   background: transparent;
+  max-width: 100%;
+}
+
+/* Keep tables inside card/tab; enable horizontal pan when columns are wide */
+.app-content .ant-table-wrapper.ms-table-scroll,
+.app-content .ms-table-scroll.ant-table-wrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-content .ant-table-wrapper .ant-spin-nested-loading,
+.app-content .ant-table-wrapper .ant-spin-container,
+.app-content .ant-table-wrapper .ant-table {
+  min-width: 0;
 }
 
 .app-content .ant-table {
   border-radius: var(--ms-radius-sm);
   background: transparent !important;
+}
+
+.app-content .ant-table-content,
+.app-content .ant-table-body {
+  overflow-x: auto !important;
 }
 
 .app-content .ant-table-thead > tr > th {

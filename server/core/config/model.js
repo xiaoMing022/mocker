@@ -403,10 +403,15 @@ export function validateProjectPatch(slug, patch, fullConfig, knownSlugs) {
     errors.push(`port ${next.port} conflicts with admin port`)
   }
 
+  // Paused projects still reserve their port for resume — never double-book.
   for (const [otherSlug, other] of Object.entries(fullConfig.projects)) {
     if (otherSlug === slug) continue
-    if (other.enabled && next.enabled && other.port === next.port) {
-      errors.push(`port ${next.port} conflicts with project "${otherSlug}"`)
+    if (other.port === next.port) {
+      errors.push(
+        `port ${next.port} conflicts with project "${otherSlug}"${
+          other.enabled ? "" : "（已暂停，端口仍预留）"
+        }`,
+      )
     }
   }
 
@@ -455,9 +460,10 @@ export function validateCreateProject(body, fullConfig, codeSlugs) {
     errors.push("name 必填")
   }
 
+  // Include paused projects — their ports stay reserved for resume.
   const usedPorts = new Set([resolveAdminPort(fullConfig)])
   for (const p of Object.values(fullConfig.projects)) {
-    if (p.enabled) usedPorts.add(p.port)
+    usedPorts.add(p.port)
   }
 
   let port =
@@ -468,7 +474,7 @@ export function validateCreateProject(body, fullConfig, codeSlugs) {
   if (!Number.isInteger(port) || port < 1 || port > 65535) {
     errors.push("port must be an integer between 1 and 65535")
   } else if (usedPorts.has(port)) {
-    errors.push(`port ${port} 已被占用`)
+    errors.push(`port ${port} 已被占用（含已暂停项目预留）`)
   }
 
   /** @type {Record<string, EnvironmentConfig>} */
