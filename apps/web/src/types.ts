@@ -4,6 +4,20 @@ export type ProxyRule = {
   enabled?: boolean
 }
 
+export type ProxyConfig = {
+  enabled: boolean
+  target: string
+  active?: boolean
+  rules?: ProxyRule[]
+  /** Extra request headers attached when proxying under this environment */
+  headers?: Record<string, string>
+}
+
+export type ProjectEnvironment = {
+  name: string
+  proxy: ProxyConfig
+}
+
 export type Project = {
   slug: string
   name: string
@@ -12,12 +26,11 @@ export type Project = {
   /** true when project is paused (port released, config kept) */
   paused?: boolean
   port: number
-  proxy: {
-    enabled: boolean
-    target: string
-    active?: boolean
-    rules?: ProxyRule[]
-  }
+  /** Active environment id (test / gray / prod / default …) */
+  activeEnvironment?: string
+  /** Named environments; routes are shared across environments */
+  environments?: Record<string, ProjectEnvironment>
+  proxy: ProxyConfig
   status: string
   lastError?: string | null
   warning?: string | null
@@ -77,6 +90,11 @@ export type Route = {
   scenarios: Scenario[]
   note?: string
   requestExample?: RequestExample | null
+  /**
+   * Extra request headers when this path is proxied to upstream
+   * (merged after client headers; same-name keys override).
+   */
+  proxyHeaders?: Record<string, string>
 }
 
 export type RequestLog = {

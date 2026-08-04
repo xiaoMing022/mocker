@@ -55,6 +55,13 @@ export const mockApi = {
   reloadProject: (slug: string) =>
     api<{ project: import("../types").Project }>("POST", `/__mock/projects/${slug}/reload`),
 
+  setActiveEnvironment: (slug: string, id: string) =>
+    api<{ project: import("../types").Project }>(
+      "POST",
+      `/__mock/projects/${slug}/environment`,
+      { id },
+    ),
+
   deleteProject: (slug: string) => api("DELETE", `/__mock/projects/${slug}`),
 
   listRoutes: (slug: string) =>
