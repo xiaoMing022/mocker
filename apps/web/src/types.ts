@@ -54,6 +54,40 @@ export type RequestExample = {
 
 export type ScenarioMode = "json" | "sse"
 
+export type PaginationParamSource =
+  | "query"
+  | "body"
+  | "query-then-body"
+  | "body-then-query"
+
+export type PaginationStyle = "page" | "offset"
+
+export type PaginationPreset =
+  | "page-pageSize"
+  | "pageNum-pageSize"
+  | "offset-limit"
+
+/** Route default or scenario override for JSON list pagination. */
+export type PaginationConfig = {
+  enabled?: boolean
+  preset?: PaginationPreset | null
+  paramSource?: PaginationParamSource
+  pageParam?: string
+  pageSizeParam?: string
+  offsetParam?: string
+  limitParam?: string
+  style?: PaginationStyle
+  pageBase?: 0 | 1
+  defaultPageSize?: number
+  maxPageSize?: number
+  listPath?: string
+  totalPath?: string | null
+  pagePath?: string | null
+  pageSizePath?: string | null
+  totalPagesPath?: string | null
+  hasMorePath?: string | null
+}
+
 export type SseEvent = {
   event?: string
   data?: unknown
@@ -78,6 +112,10 @@ export type Scenario = {
   match?: ScenarioMatch | null
   mode?: ScenarioMode
   stream?: ScenarioStream | null
+  /** null/undefined = inherit route; { enabled: false } = off; else override */
+  pagination?: PaginationConfig | null
+  /** spec scenarios are owned by `mocker apply`; console scenarios are local adjustments */
+  origin?: "spec" | "console"
 }
 
 export type Route = {
@@ -95,6 +133,22 @@ export type Route = {
    * (merged after client headers; same-name keys override).
    */
   proxyHeaders?: Record<string, string>
+  /** Interface-level default pagination transform */
+  pagination?: PaginationConfig | null
+  origin?: "spec" | "console"
+}
+
+export type ChannelKind = "websocket" | "rtc"
+
+export type Channel = {
+  id: string
+  name: string
+  kind: ChannelKind
+  enabled: boolean
+  bind?: { path: string } | null
+  origin?: "spec" | "console"
+  /** Always unimplemented until a protocol runtime is attached */
+  runtime: "unimplemented"
 }
 
 export type RequestLog = {
@@ -110,9 +164,10 @@ export type RequestLog = {
   durationMs: number | null
   source: "dynamic" | "code" | "proxy" | "miss" | "unknown" | string
   scenarioName?: string | null
+  scenarioOrigin?: "spec" | "console" | null
   routeName?: string | null
   matchedByCondition?: boolean
   proxyTarget?: string | null
 }
 
-export type TabKey = "overview" | "routes" | "logs"
+export type TabKey = "overview" | "routes" | "logs" | "channels"

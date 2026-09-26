@@ -65,6 +65,7 @@ export function createProjectApp({ project, runtime, getRoutes, onRequestLog }) 
         durationMs: Date.now() - started,
         source,
         scenarioName: res.locals.mockScenarioName || null,
+        scenarioOrigin: res.locals.mockScenarioOrigin || null,
         routeName: res.locals.mockRouteName || null,
         matchedByCondition: Boolean(res.locals.mockMatchedByCondition),
         proxyTarget: res.locals.proxyTarget || null,

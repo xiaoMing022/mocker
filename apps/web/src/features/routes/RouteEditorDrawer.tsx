@@ -9,11 +9,18 @@ import {
   Select,
   Space,
   Tabs,
+  Tag,
   message,
 } from "antd"
 import { useEffect, useMemo, useState } from "react"
 import { mockApi } from "../../api/client"
-import type { Project, Route, Scenario, ScenarioMode } from "../../types"
+import type {
+  PaginationConfig,
+  Project,
+  Route,
+  Scenario,
+  ScenarioMode,
+} from "../../types"
 import { buildCurlFromRoute } from "../../utils/curl"
 import {
   KeyValueEditor,
@@ -22,6 +29,14 @@ import {
 } from "../../components/KeyValueEditor"
 import { showError } from "../../utils/errors"
 import { parseJsonObject, prettyJson } from "../../utils/json"
+import { PaginationEditor } from "./PaginationEditor"
+import { ScenarioPaginationBar } from "./ScenarioPaginationBar"
+import {
+  patchRequestExampleWithPagination,
+  scenarioPaginationMode,
+  seedScenarioCustomConfig,
+  type ScenarioPaginationMode,
+} from "./paginationForm"
 import {
   DEFAULT_SSE_EVENTS,
   flushScenariosFromForm,
@@ -54,7 +69,19 @@ export function RouteEditorDrawer({
     project,
   )
 
+  /** Route-level pagination (null = off) */
+  const [routePagination, setRoutePagination] = useState<PaginationConfig | null>(
+    null,
+  )
+  const [scenarioPagMode, setScenarioPagMode] =
+    useState<ScenarioPaginationMode>("inherit")
+  const [scenarioCustomPag, setScenarioCustomPag] =
+    useState<PaginationConfig | null>(null)
+
   const isNew = !route?.id
+  const drawerSyncKey = open
+    ? `${route?.id || "new"}:${project.slug}`
+    : "closed"
 
   useEffect(() => {
     if (!open) return
@@ -70,14 +97,20 @@ export function RouteEditorDrawer({
           : "",
         proxyHeaderRows: recordToRows(route.proxyHeaders),
       })
+      setRoutePagination(
+        route.pagination?.enabled ? route.pagination : null,
+      )
       setScenarios(
         route.scenarios.map((s) => ({
           ...s,
           mode: s.mode === "sse" ? "sse" : "json",
+          pagination: s.pagination ?? null,
         })),
       )
       setActiveScenarioId(route.activeScenarioId)
-      setEditingScenarioId(route.activeScenarioId || route.scenarios[0]?.id || "")
+      setEditingScenarioId(
+        route.activeScenarioId || route.scenarios[0]?.id || "",
+      )
     } else {
       const sc = newScenario()
       form.setFieldsValue({
@@ -89,6 +122,7 @@ export function RouteEditorDrawer({
         requestExample: "",
         proxyHeaderRows: [],
       })
+      setRoutePagination(null)
       setScenarios([sc])
       setActiveScenarioId(sc.id)
       setEditingScenarioId(sc.id)
@@ -105,6 +139,13 @@ export function RouteEditorDrawer({
   useEffect(() => {
     if (!editing) return
     const mode: ScenarioMode = editing.mode === "sse" ? "sse" : "json"
+    const pagMode = scenarioPaginationMode(editing.pagination)
+    setScenarioPagMode(pagMode)
+    setScenarioCustomPag(
+      pagMode === "custom"
+        ? seedScenarioCustomConfig(routePagination, editing.pagination)
+        : seedScenarioCustomConfig(routePagination, null),
+    )
     scForm.setFieldsValue({
       name: editing.name,
       statusCode: editing.statusCode,
@@ -118,6 +159,7 @@ export function RouteEditorDrawer({
       headers: prettyJson(editing.headers ?? {}),
       match: editing.match ? prettyJson(editing.match) : "",
     })
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- seed from route only when switching scenario
   }, [editing, activeScenarioId, scForm])
 
   /** Flush editor form into scenarios state. */
@@ -127,11 +169,18 @@ export function RouteEditorDrawer({
   } | null => {
     try {
       const values = scForm.getFieldsValue() as ScenarioFormValues
+      values.scenarioPagMode = scenarioPagMode
+      const customPagination =
+        scenarioPagMode === "custom"
+          ? scenarioCustomPag ||
+            seedScenarioCustomConfig(routePagination, null)
+          : null
       const result = flushScenariosFromForm({
         scenarios,
         editing,
         activeScenarioId,
         values,
+        customPagination,
       })
       if (values.isActive && editing) setActiveScenarioId(editing.id)
       setScenarios(result.scenarios)
@@ -142,7 +191,27 @@ export function RouteEditorDrawer({
     }
   }
 
-  /** Build a temporary route for try-request / curl (uses the scenario currently being edited). */
+  const validatePaginationForSave = (
+    routePag: PaginationConfig | null,
+    scs: Scenario[],
+  ): string | null => {
+    if (routePag?.enabled && !String(routePag.listPath || "").trim()) {
+      return "接口分页已启用，请填写列表路径"
+    }
+    for (const s of scs) {
+      if (s.mode === "sse") continue
+      const mode = scenarioPaginationMode(s.pagination)
+      if (mode === "custom") {
+        const p = s.pagination
+        if (!p || !String(p.listPath || "").trim()) {
+          return `场景「${s.name}」单独配置了分页，请填写列表路径`
+        }
+      }
+    }
+    return null
+  }
+
+  /** Build a temporary route for try-request / curl. */
   const buildTempRoute = (): Route | null => {
     const flushed = flushScenario()
     if (!flushed) return null
@@ -157,7 +226,6 @@ export function RouteEditorDrawer({
       showError(e)
       return null
     }
-    // Prefer the scenario open in the editor so try/curl match what the user is configuring.
     const tryScenarioId =
       editingScenarioId &&
       flushed.scenarios.some((s) => s.id === editingScenarioId)
@@ -173,6 +241,7 @@ export function RouteEditorDrawer({
       scenarios: flushed.scenarios,
       requestExample: requestExample as Route["requestExample"],
       proxyHeaders: rowsToRecord(values.proxyHeaderRows),
+      pagination: routePagination,
     }
   }
 
@@ -187,6 +256,14 @@ export function RouteEditorDrawer({
       }
       if (!flushed.scenarios.length) {
         message.error("至少需要一个场景")
+        return
+      }
+      const pagErr = validatePaginationForSave(
+        routePagination,
+        flushed.scenarios,
+      )
+      if (pagErr) {
+        message.error(pagErr)
         return
       }
       let requestExample = null
@@ -210,6 +287,7 @@ export function RouteEditorDrawer({
         scenarios: flushed.scenarios,
         requestExample,
         proxyHeaders: rowsToRecord(values.proxyHeaderRows),
+        pagination: routePagination,
       }
 
       setSaving(true)
@@ -235,13 +313,42 @@ export function RouteEditorDrawer({
     await runTry(temp)
   }
 
+  const writeRequestExample = (config: PaginationConfig) => {
+    try {
+      const raw = form.getFieldValue("requestExample") || ""
+      let current: Record<string, unknown> | null = null
+      if (String(raw).trim()) {
+        current = parseJsonObject(raw, "requestExample") as Record<
+          string,
+          unknown
+        >
+      }
+      const patched = patchRequestExampleWithPagination(current, config)
+      form.setFieldsValue({ requestExample: prettyJson(patched) })
+      message.success("已补全请求示例中的分页参数")
+    } catch (e) {
+      showError(e)
+    }
+  }
+
   const modeWatch = Form.useWatch("mode", scForm) as ScenarioMode | undefined
   const isSseMode = (modeWatch ?? editing?.mode) === "sse"
+  const responseWatch = Form.useWatch("response", scForm) as string | undefined
+
+  const effectiveListPath = useMemo(() => {
+    if (scenarioPagMode === "off") return null
+    if (scenarioPagMode === "custom") {
+      return scenarioCustomPag?.listPath || null
+    }
+    return routePagination?.enabled ? routePagination.listPath || null : null
+  }, [scenarioPagMode, scenarioCustomPag, routePagination])
+
+  const scenarioSyncKey = `${drawerSyncKey}:${editing?.id || ""}`
 
   return (
     <Drawer
       title={isNew ? "新建接口" : "编辑接口"}
-      width={640}
+      width={720}
       open={open}
       onClose={onClose}
       destroyOnHidden
@@ -323,7 +430,7 @@ export function RouteEditorDrawer({
         <Form.Item
           name="requestExample"
           label="请求示例 requestExample JSON"
-          extra="试请求 / curl 使用"
+          extra="试请求 / curl 使用；可与分页「写入请求示例」联动"
         >
           <Input.TextArea
             rows={4}
@@ -341,6 +448,18 @@ export function RouteEditorDrawer({
         >
           <KeyValueEditor addLabel="添加转发请求头" />
         </Form.Item>
+
+        <Divider titlePlacement="left" plain>
+          分页 Mock（接口默认）
+        </Divider>
+        <PaginationEditor
+          value={routePagination}
+          onChange={setRoutePagination}
+          syncKey={drawerSyncKey}
+          showEnableSwitch
+          responseJsonText={responseWatch}
+          onWriteRequestExample={writeRequestExample}
+        />
       </Form>
 
       <Divider />
@@ -379,8 +498,8 @@ export function RouteEditorDrawer({
         items={scenarios.map((s) => ({
           key: s.id,
           label: `${s.name}${s.id === activeScenarioId ? " ★" : ""}${
-            s.mode === "sse" ? " · SSE" : ""
-          }${s.match ? " · match" : ""}`,
+            s.origin === "spec" ? " · 基准" : ""
+          }${s.mode === "sse" ? " · SSE" : ""}${s.match ? " · match" : ""}`,
           children: null,
         }))}
       />
@@ -408,7 +527,6 @@ export function RouteEditorDrawer({
                       })
                     }
                   }
-                  // Keep tab labels in sync with mode switch without waiting for flush.
                   setScenarios((prev) =>
                     prev.map((s) =>
                       s.id === editing.id ? { ...s, mode } : s,
@@ -442,7 +560,7 @@ export function RouteEditorDrawer({
                 name="streamEvents"
                 label="SSE events JSON 数组"
                 rules={[{ required: true }]}
-                extra='每项可含 event / data / id / retry / delayMs。data 为对象时会 JSON.stringify。'
+                extra="每项可含 event / data / id / retry / delayMs。data 为对象时会 JSON.stringify。"
               >
                 <Input.TextArea rows={10} className="mono" />
               </Form.Item>
@@ -499,15 +617,43 @@ export function RouteEditorDrawer({
                   插入 OpenAI 风格 chunk
                 </Button>
               </Space>
+              <TypographySseNote />
             </>
           ) : (
-            <Form.Item
-              name="response"
-              label="Response JSON"
-              rules={[{ required: true }]}
-            >
-              <Input.TextArea rows={10} className="mono" />
-            </Form.Item>
+            <>
+              <ScenarioPaginationBar
+                mode={scenarioPagMode}
+                onModeChange={setScenarioPagMode}
+                routePagination={routePagination}
+                customPagination={scenarioCustomPag}
+                onCustomChange={setScenarioCustomPag}
+                responseJsonText={responseWatch}
+                syncKey={scenarioSyncKey}
+              />
+
+              <Form.Item
+                name="response"
+                label={
+                  <Space size={8}>
+                    <span>Response JSON</span>
+                    {effectiveListPath && (
+                      <Tag color="processing">
+                        全量列表 @ {effectiveListPath}
+                      </Tag>
+                    )}
+                  </Space>
+                }
+                rules={[{ required: true }]}
+                extra={
+                  effectiveListPath
+                    ? `「${effectiveListPath}」放全量数组，运行时按页切片`
+                    : undefined
+                }
+                style={{ marginTop: 16 }}
+              >
+                <Input.TextArea rows={10} className="mono" />
+              </Form.Item>
+            </>
           )}
 
           <Form.Item name="headers" label="响应头 JSON">
@@ -529,5 +675,13 @@ export function RouteEditorDrawer({
 
       {tryResult && <pre className="code-block">{tryResult}</pre>}
     </Drawer>
+  )
+}
+
+function TypographySseNote() {
+  return (
+    <p style={{ color: "var(--ms-text-secondary)", fontSize: 12, marginTop: 0 }}>
+      SSE 模式不支持分页切片
+    </p>
   )
 }

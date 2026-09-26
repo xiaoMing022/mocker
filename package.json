@@ -9,6 +9,18 @@
     "url": "git@github.com:xiaoMing022/mocker.git"
   },
   "main": "apps/desktop/main.js",
+  "bin": {
+    "mocker": "./cli/mocker.js"
+  },
+  "files": [
+    "cli/**",
+    "server/**",
+    "skills/mocker/**",
+    "public/console/**",
+    "config/**",
+    "scripts/postinstall.mjs",
+    "README.md"
+  ],
   "scripts": {
     "dev": "concurrently -k -n server,web -c blue,magenta \"npm run dev:server\" \"npm run dev:web\"",
     "dev:server": "node --watch server/server.js",
@@ -17,13 +29,15 @@
     "build": "npm run build --prefix apps/web && touch public/console/.gitkeep",
     "build:web": "npm run build --prefix apps/web && touch public/console/.gitkeep",
     "start": "node server/server.js",
+    "mocker": "node cli/mocker.js",
+    "pack:cli": "npm run build && npm pack",
+    "postinstall": "node scripts/postinstall.mjs",
     "start:web": "npm run build && node server/server.js",
     "desktop": "npm run build && electron .",
     "desktop:only": "electron .",
     "dist:mac": "npm run build && node scripts/ensure-console-built.mjs && electron-builder --mac",
     "dist:dir": "npm run build && node scripts/ensure-console-built.mjs && electron-builder --mac --dir",
-    "test": "node --test test/**/*.test.js",
-    "postinstall": "npm install --prefix apps/web"
+    "test": "node --test test/**/*.test.js"
   },
   "dependencies": {
     "express": "^5.2.0",

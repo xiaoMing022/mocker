@@ -10,6 +10,14 @@ import {
   validateCreateProject,
   validateProjectPatch,
 } from "./config-store.js"
+import { mergeSpecChannels, mergeSpecRoutes, parseApplyDocument } from "./apply-spec.js"
+import { attachChannels } from "./channels/attach.js"
+import {
+  loadChannels,
+  saveChannels,
+  toChannelView,
+  validateChannelsPayload,
+} from "./channel-store.js"
 import { createProjectApp } from "./create-project-app.js"
 import { buildProjectView } from "./project/views.js"
 import { createRequestLogStore } from "./request-log.js"
@@ -39,6 +47,9 @@ export function createProjectManager({ codeProjects }) {
 
   /** @type {Map<string, import("./route-store.js").DynamicRoute[]>} */
   const routesBySlug = new Map()
+
+  /** @type {Map<string, import("./channel-store.js").Channel[]>} */
+  const channelsBySlug = new Map()
 
   const requestLogs = createRequestLogStore({ maxPerProject: 200 })
 
@@ -131,6 +142,9 @@ export function createProjectManager({ codeProjects }) {
     }
     if (!routesBySlug.has(slug)) {
       routesBySlug.set(slug, loadRoutes(slug))
+    }
+    if (!channelsBySlug.has(slug)) {
+      channelsBySlug.set(slug, loadChannels(slug))
     }
   }
 
@@ -333,6 +347,7 @@ export function createProjectManager({ codeProjects }) {
 
       try {
         const server = await listenOnce(app, rt.port)
+        attachChannels(server, channelsBySlug.get(slug) || [])
         state.server = server
         state.status = "listening"
         state.lastError = null
@@ -386,6 +401,7 @@ export function createProjectManager({ codeProjects }) {
     config = loadConfig(codeProjects)
     ensureRuntime(slug)
     routesBySlug.set(slug, loadRoutes(slug))
+    channelsBySlug.set(slug, loadChannels(slug))
     await startProject(slug)
     return buildView(slug)
   }
@@ -445,6 +461,7 @@ export function createProjectManager({ codeProjects }) {
     saveRoutes(slug, [])
     ensureRuntime(slug)
     routesBySlug.set(slug, [])
+    channelsBySlug.set(slug, [])
     await startProject(slug)
     return buildView(slug)
   }
@@ -465,6 +482,7 @@ export function createProjectManager({ codeProjects }) {
     saveConfig(config)
     runtime.delete(slug)
     routesBySlug.delete(slug)
+    channelsBySlug.delete(slug)
     requestLogs.clear(slug)
     // leave routes.json on disk for recovery; optional cleanup not required
     return { ok: true, slug }
@@ -474,6 +492,97 @@ export function createProjectManager({ codeProjects }) {
     ensureKnown(slug)
     ensureRuntime(slug)
     return routesBySlug.get(slug) || loadRoutes(slug)
+  }
+
+  function listChannels(slug) {
+    ensureKnown(slug)
+    ensureRuntime(slug)
+    return (channelsBySlug.get(slug) || []).map(toChannelView)
+  }
+
+  /**
+   * @param {string} slug
+   * @param {string} id
+   * @param {unknown} enabled
+   */
+  function setChannelEnabled(slug, id, enabled) {
+    ensureKnown(slug)
+    ensureRuntime(slug)
+    if (typeof enabled !== "boolean") {
+      throw createHttpError(400, "enabled must be a boolean")
+    }
+    const current = channelsBySlug.get(slug) || []
+    const idx = current.findIndex((channel) => channel.id === id)
+    if (idx < 0) {
+      throw createHttpError(404, `Channel not found: ${id}`)
+    }
+    const next = current.map((channel, index) =>
+      index === idx ? { ...channel, enabled } : channel,
+    )
+    saveChannels(slug, next)
+    channelsBySlug.set(slug, next)
+    const state = runtime.get(slug)
+    if (state?.server) attachChannels(state.server, next)
+    return toChannelView(next[idx])
+  }
+
+  /**
+   * Apply a declarative spec. Does not replace console-owned routes.
+   * @param {string} slug
+   * @param {unknown} document
+   */
+  function applySpec(slug, document) {
+    ensureKnown(slug)
+    ensureRuntime(slug)
+    if (document && typeof document === "object" && !Array.isArray(document)) {
+      const declared = document.project
+      if (typeof declared === "string" && declared.trim() && declared.trim() !== slug) {
+        throw createHttpError(400, `document project ${declared.trim()} does not match ${slug}`)
+      }
+    }
+    const parsed = parseApplyDocument(document)
+    if (!parsed.ok) {
+      throw createHttpError(400, parsed.errors.join("; "), parsed.errors)
+    }
+
+    /** @type {ReturnType<typeof mergeSpecRoutes>["report"] | null} */
+    let routeReport = null
+    if (parsed.routes) {
+      const merged = mergeSpecRoutes(routesBySlug.get(slug) || [], parsed.routes)
+      const validated = validateRoutesPayload(merged.routes)
+      if (!validated.ok) {
+        throw createHttpError(400, validated.errors.join("; "), validated.errors)
+      }
+      saveRoutes(slug, validated.routes)
+      routesBySlug.set(slug, validated.routes)
+      routeReport = merged.report
+    }
+
+    /** @type {ReturnType<typeof mergeSpecChannels>["report"] | null} */
+    let channelReport = null
+    if (parsed.channels) {
+      const merged = mergeSpecChannels(channelsBySlug.get(slug) || [], parsed.channels)
+      const validated = validateChannelsPayload(merged.channels)
+      if (!validated.ok) {
+        throw createHttpError(400, validated.errors.join("; "), validated.errors)
+      }
+      saveChannels(slug, validated.channels)
+      channelsBySlug.set(slug, validated.channels)
+      const state = runtime.get(slug)
+      if (state?.server) attachChannels(state.server, validated.channels)
+      channelReport = merged.report
+    }
+
+    return {
+      project: slug,
+      routes: routeReport,
+      channels: {
+        created: channelReport?.created ?? [],
+        updated: channelReport?.updated ?? [],
+        removed: channelReport?.removed ?? [],
+        items: (channelsBySlug.get(slug) || []).map(toChannelView),
+      },
+    }
   }
 
   function setRoutesInMemory(slug, routes) {
@@ -727,6 +836,9 @@ export function createProjectManager({ codeProjects }) {
     reloadProject,
     getConfig,
     listRoutes,
+    listChannels,
+    setChannelEnabled,
+    applySpec,
     replaceRoutes,
     createRoute,
     updateRoute,

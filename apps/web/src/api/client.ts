@@ -108,6 +108,19 @@ export const mockApi = {
 
   clearLogs: (slug: string) => api("DELETE", `/__mock/projects/${slug}/logs`),
 
+  listChannels: (slug: string) =>
+    api<{ channels: import("../types").Channel[] }>(
+      "GET",
+      `/__mock/projects/${slug}/channels`,
+    ),
+
+  setChannelEnabled: (slug: string, id: string, enabled: boolean) =>
+    api<{ channel: import("../types").Channel }>(
+      "PATCH",
+      `/__mock/projects/${slug}/channels/${id}`,
+      { enabled },
+    ),
+
   logToScenario: (
     slug: string,
     id: string,

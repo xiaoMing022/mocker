@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import type { TabKey } from "../types"
 
-const TABS: TabKey[] = ["overview", "routes", "logs"]
+const TABS: TabKey[] = ["overview", "routes", "logs", "channels"]
 
 function parseHash(): { slug: string | null; tab: TabKey } {
   const raw = location.hash.replace(/^#\/?/, "")

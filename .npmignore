@@ -1,0 +1,27 @@
+# Used instead of .gitignore so the built console can be packed.
+node_modules/
+apps/
+test/
+docs/
+release/
+dist/
+.omo/
+.playwright-mcp/
+*.tgz
+*.log
+.DS_Store
+.env
+.env.*
+*.tsbuildinfo
+*.tmp
+*.temp
+.cache/
+.worktrees/
+worktrees/
+.vscode/
+.idea/
+*.dmg
+*.zip
+*.blockmap
+builder-effective-config.yaml
+builder-debug.yml

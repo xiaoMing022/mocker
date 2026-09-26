@@ -1,5 +1,7 @@
-import type { Scenario, ScenarioMode } from "../../types"
+import type { PaginationConfig, Scenario, ScenarioMode } from "../../types"
 import { parseJsonArray, parseJsonObject } from "../../utils/json"
+import type { ScenarioPaginationMode } from "./paginationForm"
+import { scenarioModeToPagination } from "./paginationForm"
 
 export const DEFAULT_SSE_EVENTS = [
   { data: { delta: "你" }, delayMs: 50 },
@@ -19,6 +21,8 @@ export type ScenarioFormValues = {
   keepAliveMs?: number
   headers?: string
   match?: string
+  /** inherit | off | custom */
+  scenarioPagMode?: ScenarioPaginationMode
 }
 
 export function newScenario(name = "默认"): Scenario {
@@ -32,15 +36,18 @@ export function newScenario(name = "默认"): Scenario {
     match: null,
     mode: "json",
     stream: null,
+    pagination: null,
   }
 }
 
 /**
  * Apply scenario form values onto one Scenario (pure; throws on invalid JSON).
+ * @param customPagination used when scenarioPagMode === "custom"
  */
 export function applyScenarioFormValues(
   editing: Scenario,
   values: ScenarioFormValues,
+  customPagination?: PaginationConfig | null,
 ): Scenario {
   const mode: ScenarioMode = values.mode === "sse" ? "sse" : "json"
   const headers =
@@ -72,6 +79,14 @@ export function applyScenarioFormValues(
     stream = null
   }
 
+  const pagMode = values.scenarioPagMode || "inherit"
+  const pagination = scenarioModeToPagination(
+    pagMode,
+    pagMode === "custom"
+      ? (customPagination ?? editing.pagination ?? null)
+      : null,
+  )
+
   return {
     ...editing,
     name: String(values.name || "").trim() || "未命名场景",
@@ -82,6 +97,7 @@ export function applyScenarioFormValues(
     stream,
     headers,
     match,
+    pagination,
   }
 }
 
@@ -94,11 +110,13 @@ export function flushScenariosFromForm(input: {
   editing: Scenario | undefined
   activeScenarioId: string
   values: ScenarioFormValues
+  customPagination?: PaginationConfig | null
 }): { scenarios: Scenario[]; activeScenarioId: string } {
-  const { scenarios, editing, activeScenarioId, values } = input
+  const { scenarios, editing, activeScenarioId, values, customPagination } =
+    input
   if (!editing) return { scenarios, activeScenarioId }
 
-  const updated = applyScenarioFormValues(editing, values)
+  const updated = applyScenarioFormValues(editing, values, customPagination)
   const nextActive = values.isActive ? editing.id : activeScenarioId
   const next = scenarios.map((s) => (s.id === editing.id ? updated : s))
   return { scenarios: next, activeScenarioId: nextActive }

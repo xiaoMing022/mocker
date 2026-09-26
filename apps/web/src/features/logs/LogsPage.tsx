@@ -119,7 +119,7 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
       ellipsis: true,
       render: (_: unknown, row) =>
         row.scenarioName
-          ? `${row.scenarioName}${row.matchedByCondition ? " · match" : ""}`
+          ? `${row.scenarioName}${row.scenarioOrigin === "spec" ? " · 基准" : ""}${row.matchedByCondition ? " · match" : ""}`
           : "—",
     },
     {
@@ -274,6 +274,7 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
               <Typography.Text strong>场景</Typography.Text>
               <div>
                 {selected.scenarioName || "—"}
+                {selected.scenarioOrigin === "spec" ? " · 基准" : ""}
                 {selected.matchedByCondition ? "（条件匹配）" : ""}
               </div>
               {selected.routeName && (

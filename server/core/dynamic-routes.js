@@ -1,6 +1,7 @@
 import { sendJson } from "../lib/http.js"
 import { sendSse } from "../lib/sse.js"
 import { hasMatchRules, pickScenario, scenarioMatches } from "./match.js"
+import { applyPagination, mergePagination } from "./pagination.js"
 
 /**
  * @param {{
@@ -57,12 +58,14 @@ export function createDynamicRoutesMiddleware({ getRoutes }) {
     res.locals.mockRouteId = hit.id
     res.locals.mockScenarioId = scenario.id
     res.locals.mockScenarioName = scenario.name
+    res.locals.mockScenarioOrigin = scenario.origin === "spec" ? "spec" : "console"
     res.locals.mockRouteName = hit.name || `${hit.method} ${hit.path}`
     res.locals.mockMatchedByCondition = matchedByCondition
 
     const mockHeaders = {
       "X-Mock-Route": hit.id,
       "X-Mock-Scenario": scenario.id,
+      "X-Mock-Scenario-Origin": res.locals.mockScenarioOrigin,
     }
     if (scenario.name) {
       mockHeaders["X-Mock-Scenario-Name"] = encodeURIComponent(scenario.name)
@@ -96,6 +99,31 @@ export function createDynamicRoutesMiddleware({ getRoutes }) {
       res.setHeader(key, value)
     }
 
-    await sendJson(res, scenario.response, scenario.statusCode, scenario.delayMs)
+    let responseBody = scenario.response
+    const effectivePag = mergePagination(hit.pagination, scenario.pagination)
+    if (effectivePag) {
+      const paginated = applyPagination(
+        scenario.response,
+        { query: flatQuery, body: req.body },
+        effectivePag,
+      )
+      responseBody = paginated.body
+      if (paginated.applied) {
+        res.setHeader("X-Mock-Pagination", "applied")
+        if (paginated.page != null) {
+          res.setHeader("X-Mock-Page", String(paginated.page))
+        }
+        if (paginated.pageSize != null) {
+          res.setHeader("X-Mock-Page-Size", String(paginated.pageSize))
+        }
+        if (paginated.total != null) {
+          res.setHeader("X-Mock-Total", String(paginated.total))
+        }
+      } else {
+        res.setHeader("X-Mock-Pagination", "skipped")
+      }
+    }
+
+    await sendJson(res, responseBody, scenario.statusCode, scenario.delayMs)
   }
 }

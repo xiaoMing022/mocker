@@ -32,6 +32,9 @@ const RoutesPage = lazy(() =>
 const LogsPage = lazy(() =>
   import("../logs/LogsPage").then((m) => ({ default: m.LogsPage })),
 )
+const ChannelsPage = lazy(() =>
+  import("../channels/ChannelsPage").then((m) => ({ default: m.ChannelsPage })),
+)
 
 const { Content } = Layout
 
@@ -243,6 +246,15 @@ export function Workspace({
                       project={current}
                       onChanged={() => onRefresh({ keepSelection: true })}
                     />
+                  </Suspense>
+                ),
+              },
+              {
+                key: "channels",
+                label: "实时通道",
+                children: (
+                  <Suspense fallback={<TabFallback />}>
+                    <ChannelsPage project={current} />
                   </Suspense>
                 ),
               },

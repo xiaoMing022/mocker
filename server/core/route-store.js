@@ -4,12 +4,22 @@ import { randomUUID } from "node:crypto"
 
 import { getConfigRoot } from "./paths.js"
 import { normalizeHeaderMap } from "./util/headers.js"
+import {
+  normalizePagination,
+  validateEffectivePagination,
+  validatePaginationFields,
+} from "./pagination.js"
 
 function projectsConfigDir() {
   return path.join(getConfigRoot(), "projects")
 }
 
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
+
+/** @param {unknown} value */
+function normalizeOrigin(value) {
+  return value === "spec" ? "spec" : "console"
+}
 
 /**
  * @typedef {{
@@ -32,6 +42,8 @@ const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
  *   keepAliveMs: number
  * }} ScenarioStream
  *
+ * @typedef {import("./pagination.js").PaginationConfig} PaginationConfig
+ *
  * @typedef {{
  *   id: string,
  *   name: string,
@@ -41,7 +53,9 @@ const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
  *   headers: Record<string, string>,
  *   match: ScenarioMatch | null,
  *   mode: "json" | "sse",
- *   stream: ScenarioStream | null
+ *   stream: ScenarioStream | null,
+ *   pagination: PaginationConfig | null,
+ *   origin: "spec" | "console"
  * }} Scenario
  *
  * @typedef {{
@@ -60,7 +74,9 @@ const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
  *   scenarios: Scenario[],
  *   note: string,
  *   requestExample: RequestExample | null,
- *   proxyHeaders: Record<string, string>
+ *   proxyHeaders: Record<string, string>,
+ *   pagination: PaginationConfig | null,
+ *   origin: "spec" | "console"
  * }} DynamicRoute
  */
 
@@ -261,6 +277,8 @@ export function normalizeScenario(input) {
     match: normalizeMatch(input.match),
     mode,
     stream,
+    pagination: normalizePagination(input.pagination),
+    origin: normalizeOrigin(input.origin),
   }
 }
 
@@ -447,6 +465,8 @@ export function normalizeRoute(input) {
     note: typeof input.note === "string" ? input.note : "",
     requestExample: normalizeRequestExample(input.requestExample),
     proxyHeaders: normalizeHeaderMap(input.proxyHeaders),
+    pagination: normalizePagination(input.pagination),
+    origin: normalizeOrigin(input.origin),
   }
 }
 
@@ -481,7 +501,8 @@ export function validateRoutesPayload(routesInput) {
   const keys = new Map()
 
   for (let i = 0; i < routesInput.length; i += 1) {
-    const route = normalizeRoute(routesInput[i])
+    const raw = routesInput[i]
+    const route = normalizeRoute(raw)
     if (!route) {
       errors.push(`routes[${i}] is invalid (method/path/scenarios)`)
       continue
@@ -505,6 +526,39 @@ export function validateRoutesPayload(routesInput) {
         errors.push(`routes[${i}] duplicate scenario id ${s.id}`)
       }
       scenarioIds.add(s.id)
+    }
+
+    // Validate raw pagination (normalize drops unknown values)
+    if (raw && typeof raw === "object" && "pagination" in raw) {
+      errors.push(
+        ...validatePaginationFields(
+          raw.pagination,
+          `routes[${i}].pagination`,
+        ),
+      )
+    }
+    if (raw && typeof raw === "object" && Array.isArray(raw.scenarios)) {
+      for (let si = 0; si < raw.scenarios.length; si += 1) {
+        const rawSc = raw.scenarios[si]
+        if (rawSc && typeof rawSc === "object" && "pagination" in rawSc) {
+          errors.push(
+            ...validatePaginationFields(
+              rawSc.pagination,
+              `routes[${i}].scenarios[${si}].pagination`,
+            ),
+          )
+        }
+      }
+    }
+
+    for (let si = 0; si < route.scenarios.length; si += 1) {
+      errors.push(
+        ...validateEffectivePagination(
+          route.pagination,
+          route.scenarios[si].pagination,
+          `routes[${i}].scenarios[${si}]`,
+        ),
+      )
     }
 
     routes.push(route)
@@ -539,6 +593,8 @@ export function applyRoutePatch(current, patch) {
       patch.proxyHeaders !== undefined
         ? patch.proxyHeaders
         : current.proxyHeaders,
+    pagination:
+      patch.pagination !== undefined ? patch.pagination : current.pagination,
   }
 
   return normalizeRoute(merged)

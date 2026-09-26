@@ -14,6 +14,7 @@ import { pathFilterMatch } from "./match.js"
  *   durationMs: number | null,
  *   source: 'dynamic' | 'code' | 'proxy' | 'miss' | 'unknown',
  *   scenarioName?: string | null,
+ *   scenarioOrigin?: "spec" | "console" | null,
  *   routeName?: string | null,
  *   matchedByCondition?: boolean,
  *   proxyTarget?: string | null
@@ -55,6 +56,7 @@ export function createRequestLogStore({ maxPerProject = DEFAULT_LIMIT } = {}) {
       durationMs: entry.durationMs ?? null,
       source: entry.source || "unknown",
       scenarioName: entry.scenarioName ?? null,
+      scenarioOrigin: entry.scenarioOrigin === "spec" ? "spec" : entry.scenarioOrigin === "console" ? "console" : null,
       routeName: entry.routeName ?? null,
       matchedByCondition: Boolean(entry.matchedByCondition),
       proxyTarget: entry.proxyTarget ?? null,

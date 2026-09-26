@@ -1,15 +1,16 @@
 # Mocker
 
-本地多项目 Mock 工作台：每项目独立端口，Web / 桌面双入口配置接口与场景，未命中可按规则转发上游。
+本地多项目 Mock 工作台：每项目独立端口。Agent 用 CLI 把声明式文档应用到运行中的服务；Web / 桌面用来调场景、暂停和查看通道。未命中的 HTTP 请求可按规则转发上游。
 
 仓库：https://github.com/xiaoMing022/mocker
 
-**双入口：**
+**入口：**
 
 | 入口 | 说明 | 命令 |
 |------|------|------|
-| **Web** | 浏览器控制台 + 后台服务 | `npm run dev` / `npm start` |
-| **Desktop** | Electron 桌面壳（同一套 runtime） | `npm run desktop` / `npm run dist:mac` |
+| **CLI** | 可安装的 `mocker` 命令。`start` 打开控制台；agent 用 `apply` 写入基准接口 | `mocker start` / `mocker apply --file mocker.json` |
+| **Web** | 浏览器控制台，调节场景、暂停、通道开关 | `npm run dev` / `npm start` |
+| **Desktop** | Electron 桌面壳（同一套 runtime 和控制台） | `npm run desktop` / `npm run dist:mac` |
 
 业务项目均为**配置驱动**，与控制台「新建项目」同一套机制。
 
@@ -38,6 +39,40 @@ npm run dev          # Web 开发：API :4000 + Vite :5173
 npm run build && npm start
 ```
 
+### CLI
+
+安装成终端命令（需要本机已有 Node）：
+
+```bash
+npm run pack:cli
+npm install -g ./mocker-0.4.0.tgz
+mocker start
+```
+
+`mocker start` 会启动服务并打开 Web 控制台。服务已经在跑时，它只打开浏览器然后退出。仓库里开发可先 `npm run build`，再用 `node cli/mocker.js start`。
+
+`npm install -g` 这个安装包时，会把唯一的 skill 装进 `~/.grok/skills/mocker` 和 `~/.agents/skills/mocker`，并打印路径。仓库里的 `npm install` 不会写这些目录。`mocker skills install` 用来重新拷贝。`mocker skills list` 列出包里的 skill，`mocker skills read mocker` 打印正文。细节不做成多份 skill，agent 需要时再读命令帮助和 `mocker schema`。
+
+别的 agent 接前端请求时，先读命令说明，再在用户项目里写文档：
+
+```bash
+mocker skill
+mocker status
+mocker project create --slug shop-web --name "Shop Web"
+mocker schema
+mocker apply --file ./mocker.json --project shop-web
+mocker logs --project shop-web
+mocker capture --project shop-web --file ./mocker.json
+mocker check --file ./mocker.json
+mocker scenario activate --file ./mocker.json
+```
+
+`logs` 看前端打到项目端口上的真实请求。`capture` 把每个 method+path 的最新一条收成 apply 文档。`check` 再请求这些路径，只有打中文档里的基准场景且状态码一致才算通过。当前仍是控制台场景时，用户同意后执行 `scenario activate` 再 `check`。它只切换当前场景。
+
+文档里的 `routes` 按 `method + path` 维护基准场景（`origin: spec`）。控制台另加的场景和当前启用场景会保留。`channels` 只登记 `websocket` / `rtc`，响应里的 `runtime` 为 `unimplemented`，本进程不升级 WebSocket，也不打开 RTC。
+
+Admin 地址默认 `http://127.0.0.1:4000`，可用 `--admin` 或 `MOCKER_ADMIN_URL`。已安装的命令把配置写到 `~/Library/Application Support/Mocker/config/`（与桌面端相同）。在仓库里直接跑则仍用仓库 `config/`。`MOCK_CONFIG_DIR` 优先于两者。
+
 ### 桌面端
 
 ```bash
@@ -61,9 +96,10 @@ xattr -dr com.apple.quarantine "release/mac-arm64/Mocker.app"
 
 | 场景 | 路径 |
 |------|------|
-| 开发（`npm start` / `npm run desktop` 源码） | 仓库内 `config/` |
-| 打包后的 `.app`（可写） | `~/Library/Application Support/Mocker/config/` |
+| 开发（仓库里 `npm start` / `node cli/mocker.js` / `npm run desktop` 源码） | 仓库内 `config/` |
+| 已安装的 `mocker` 命令，或打包后的 `.app`（可写） | `~/Library/Application Support/Mocker/config/` |
 | 打包后的 `.app`（只读种子） | `Contents/Resources/seed-config/`（首次启动拷贝到可写目录） |
+| 已安装的 `mocker` 命令（只读种子） | 安装包内的 `config/`（首次启动拷贝，不覆盖已有） |
 | 自定义配置目录 | 环境变量 `MOCK_CONFIG_DIR` |
 | 自定义种子目录 | 环境变量 `MOCK_SEED_CONFIG_DIR` |
 
@@ -188,6 +224,7 @@ mocker/
 - 接口 Mock：场景切换、match、requestExample、试请求、curl、导入导出
 - **SSE 流式**：场景 `mode: "sse"`，配置 `stream.events[]`
 - 请求日志：筛选、详情、curl、保存为场景
+- 实时通道：列出已登记的 WebSocket / RTC，可开关启用；协议未接入
 - 主题：浅色 / 深色（Web 与桌面共用同一套 UI）
 
 ### SSE 场景示例（`routes.json`）

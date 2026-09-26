@@ -154,6 +154,36 @@ export function registerAdminRoutes(app, { manager }) {
     }
   })
 
+  app.get("/__mock/projects/:slug/channels", (req, res) => {
+    try {
+      res.json({ channels: manager.listChannels(req.params.slug) })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
+  app.patch("/__mock/projects/:slug/channels/:id", (req, res) => {
+    try {
+      const channel = manager.setChannelEnabled(
+        req.params.slug,
+        req.params.id,
+        req.body?.enabled,
+      )
+      res.json({ channel })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
+  app.post("/__mock/projects/:slug/apply", (req, res) => {
+    try {
+      const result = manager.applySpec(req.params.slug, req.body ?? {})
+      res.json({ ok: true, ...result })
+    } catch (error) {
+      sendError(res, error)
+    }
+  })
+
   app.delete("/__mock/projects/:slug/routes/:id", (req, res) => {
     try {
       manager.deleteRoute(req.params.slug, req.params.id)

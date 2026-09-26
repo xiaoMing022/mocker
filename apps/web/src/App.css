@@ -716,3 +716,64 @@ body.desktop-shell .app-header {
     max-width: 1320px;
   }
 }
+
+/* Pagination editor */
+.pag-editor {
+  margin-bottom: 8px;
+}
+.pag-editor__enable {
+  margin-bottom: 12px;
+}
+.pag-editor__block {
+  margin-bottom: 12px;
+}
+.pag-editor__label {
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: var(--ms-text, rgba(0, 0, 0, 0.88));
+}
+.pag-summary {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--ms-fill-secondary, rgba(0, 0, 0, 0.02));
+  border: 1px solid var(--ms-border, rgba(0, 0, 0, 0.06));
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pag-summary--off {
+  padding: 8px 0;
+  background: transparent;
+  border: none;
+}
+.pag-summary__row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.pag-summary__label {
+  flex: 0 0 36px;
+  color: var(--ms-text-secondary, rgba(0, 0, 0, 0.45));
+}
+.pag-summary__value {
+  flex: 1;
+  word-break: break-all;
+}
+.pag-meta-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pag-meta-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr;
+  gap: 8px;
+  align-items: center;
+}
+.scenario-pag-bar {
+  margin-bottom: 4px;
+}
