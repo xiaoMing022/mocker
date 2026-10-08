@@ -1,59 +1,31 @@
 {
   "adminPort": 4000,
   "projects": {
-    "tts-leaderboard": {
-      "name": "TTS Leaderboard",
-      "description": "TTS 排行榜 Web / Admin Mock（控制台管理）",
-      "enabled": false,
+    "demo": {
+      "name": "Demo",
+      "description": "示例项目。复制这份结构，改成你自己的 slug、端口和接口。",
+      "enabled": true,
       "port": 4001,
-      "activeEnvironment": "default",
+      "activeEnvironment": "local",
       "environments": {
-        "default": {
-          "name": "默认",
+        "local": {
+          "name": "本地",
           "proxy": {
             "enabled": false,
             "target": ""
+          }
+        },
+        "test": {
+          "name": "测试",
+          "proxy": {
+            "enabled": false,
+            "target": "https://test.example.com"
           }
         }
       },
       "proxy": {
         "enabled": false,
         "target": ""
-      },
-      "managed": true
-    },
-    "soulx-platform": {
-      "name": "SoulX Platform",
-      "description": "SoulX：仅 mock POST /api/commerce/order/status；未命中接口 proxy 到当前环境上游",
-      "enabled": true,
-      "port": 4002,
-      "activeEnvironment": "test",
-      "environments": {
-        "test": {
-          "name": "测试",
-          "proxy": {
-            "enabled": true,
-            "target": "https://test-soulx.soulapp-inc.cn"
-          }
-        },
-        "gray": {
-          "name": "灰度",
-          "proxy": {
-            "enabled": true,
-            "target": "https://pre-soulx.soulapp-inc.cn"
-          }
-        },
-        "prod": {
-          "name": "线上",
-          "proxy": {
-            "enabled": true,
-            "target": "https://soulx.soulapp-inc.cn"
-          }
-        }
-      },
-      "proxy": {
-        "enabled": true,
-        "target": "https://test-soulx.soulapp-inc.cn"
       },
       "managed": true
     }

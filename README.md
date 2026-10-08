@@ -1,337 +1,163 @@
 # Mocker
 
-本地多项目 Mock 工作台：每项目独立端口。Agent 用 CLI 把声明式文档应用到运行中的服务；Web / 桌面用来调场景、暂停和查看通道。未命中的 HTTP 请求可按规则转发上游。
+本地多项目 Mock 服务。每个项目占用一个固定端口。人在 Web 控制台里切换场景、暂停项目、查看请求；agent 用 `mocker` 命令把接口文档应用到正在运行的服务上。没有命中的请求可以按环境转发到上游。
 
 仓库：https://github.com/xiaoMing022/mocker
 
-**入口：**
+## 能做什么
 
-| 入口 | 说明 | 命令 |
-|------|------|------|
-| **CLI** | 可安装的 `mocker` 命令。`start` 打开控制台；agent 用 `apply` 写入基准接口 | `mocker start` / `mocker apply --file mocker.json` |
-| **Web** | 浏览器控制台，调节场景、暂停、通道开关 | `npm run dev` / `npm start` |
-| **Desktop** | Electron 桌面壳（同一套 runtime 和控制台） | `npm run desktop` / `npm run dist:mac` |
+- 一台机器上同时跑多个项目，各自独立端口。端口写在配置里，同一台机器上重启后保持不变。
+- 一个接口可以有多份场景。控制台负责切换当前场景；文档里的基准场景和控制台另加的场景互不覆盖。
+- 响应可以是 JSON，也可以是 SSE 流。
+- 每个项目可以有多套环境（本地、测试、灰度、线上）。接口 Mock 共用，切换环境只换未命中请求的上游。
+- 保留每个项目最近的请求日志。agent 可以据此核对前端实际打进来的请求。
+- WebSocket 和 RTC 可以登记名称和路径。协议本身尚未接入。
 
-业务项目均为**配置驱动**，与控制台「新建项目」同一套机制。
+## 安装
 
----
+需要本机已有 Node.js 18 或更高版本。
 
-## 快速开始
+发布到 npm 之后，全局安装。包名必须带 scope，因为 npm 上的 `mocker` 这个名字已经有人用了。装好以后终端里的命令仍然是 `mocker`：
+
+```bash
+npm install -g @你的npm用户名/mocker
+mocker start
+```
+
+`mocker start` 会启动服务并打开 Web 控制台。服务已经在跑时，它只打开浏览器然后退出。
+
+全局安装会把 agent skill 拷到 `~/.grok/skills/mocker` 和 `~/.agents/skills/mocker`。仓库里执行 `npm install` 不会写这两个目录。需要重装 skill 时执行 `mocker skills install`。
+
+还没发布、或想从源码安装时：
 
 ```bash
 git clone git@github.com:xiaoMing022/mocker.git
 cd mocker
-npm install          # 根目录 + apps/web 依赖
-npm run build        # 构建 Web 控制台 → public/console/
-npm run dev          # Web 开发：API :4000 + Vite :5173
-```
-
-| 入口 | 地址 / 用法 |
-|------|-------------|
-| Web 控制台（开发） | http://localhost:5173 |
-| Web 控制台（生产） | http://localhost:4000（先 `npm run build`） |
-| 桌面端开发 | `npm run dev:desktop`（Vite HMR + Electron） |
-| 桌面端 | `npm run desktop` |
-
-仅服务端 + 已构建控制台：
-
-```bash
-npm run build && npm start
-```
-
-### CLI
-
-安装成终端命令（需要本机已有 Node）：
-
-```bash
+npm install
 npm run pack:cli
 npm install -g ./mocker-0.4.0.tgz
 mocker start
 ```
 
-`mocker start` 会启动服务并打开 Web 控制台。服务已经在跑时，它只打开浏览器然后退出。仓库里开发可先 `npm run build`，再用 `node cli/mocker.js start`。
+`npm run pack:cli` 会先构建 Web 控制台。构建机的 Node 需要 `^20.19` 或 `>=22.12`。
 
-`npm install -g` 这个安装包时，会把唯一的 skill 装进 `~/.grok/skills/mocker` 和 `~/.agents/skills/mocker`，并打印路径。仓库里的 `npm install` 不会写这些目录。`mocker skills install` 用来重新拷贝。`mocker skills list` 列出包里的 skill，`mocker skills read mocker` 打印正文。细节不做成多份 skill，agent 需要时再读命令帮助和 `mocker schema`。
+## 第一次使用
 
-别的 agent 接前端请求时，先读命令说明，再在用户项目里写文档：
+安装包自带一个示例项目 `demo`，端口是 `4001`。第一次启动、并且本机还没有 Mocker 配置时，会把这份示例复制进去。已经有配置时不会覆盖。
 
 ```bash
-mocker skill
 mocker status
-mocker project create --slug shop-web --name "Shop Web"
+```
+
+`status` 里能看到每个项目的 `port` 和 `url`。把前端的 API 地址指到该项目的 `url`。
+
+换成自己的项目：
+
+```bash
+mocker project create --slug shop-web --name "Shop Web" --port 4100
+```
+
+不写 `--port` 时，从 `4001` 起分配本机下一个空端口，并立刻写入配置。之后重启还是这个端口。指定的端口已被占用时，创建会失败。
+
+在业务项目里放一份 `mocker.json`：
+
+```json
+{
+  "project": "shop-web",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/api/orders",
+      "name": "订单列表",
+      "scenarios": [
+        {
+          "name": "ok",
+          "statusCode": 200,
+          "response": { "list": [] }
+        }
+      ]
+    }
+  ]
+}
+```
+
+然后：
+
+```bash
 mocker schema
 mocker apply --file ./mocker.json --project shop-web
 mocker logs --project shop-web
-mocker capture --project shop-web --file ./mocker.json
 mocker check --file ./mocker.json
+```
+
+`apply` 按 `method + path` 更新基准场景，并保留控制台里另加的场景和当前启用的场景。`check` 再请求这些路径，确认打中的是文档里的基准场景，并且状态码一致。如果当前仍是控制台场景，先确认后再执行：
+
+```bash
 mocker scenario activate --file ./mocker.json
 ```
 
-`logs` 看前端打到项目端口上的真实请求。`capture` 把每个 method+path 的最新一条收成 apply 文档。`check` 再请求这些路径，只有打中文档里的基准场景且状态码一致才算通过。当前仍是控制台场景时，用户同意后执行 `scenario activate` 再 `check`。它只切换当前场景。
+这条命令只切换当前场景，不改响应内容。
 
-文档里的 `routes` 按 `method + path` 维护基准场景（`origin: spec`）。控制台另加的场景和当前启用场景会保留。`channels` 只登记 `websocket` / `rtc`，响应里的 `runtime` 为 `unimplemented`，本进程不升级 WebSocket，也不打开 RTC。
+字段形状以 `mocker schema` 为准。场景使用稳定的 `name`。文档里不要写 `id`、`origin`、`enabled`、`activeScenarioId`。
 
-Admin 地址默认 `http://127.0.0.1:4000`，可用 `--admin` 或 `MOCKER_ADMIN_URL`。已安装的命令把配置写到 `~/Library/Application Support/Mocker/config/`（与桌面端相同）。在仓库里直接跑则仍用仓库 `config/`。`MOCK_CONFIG_DIR` 优先于两者。
-
-### 桌面端
-
-```bash
-npm run desktop          # 构建控制台后启动 Electron
-npm run dev:desktop      # 开发：Vite + Electron
-npm run dist:dir         # 产出可双击的 .app
-npm run dist:mac         # .app + .dmg + .zip
-```
-
-**关闭行为：** 点击窗口关闭按钮会**退出应用**并释放全部 Mock 端口。若需后台继续提供 Mock，请用菜单栏 / 托盘中的 **「隐藏窗口（后台保持 Mock）」**。
-
-打包产物在 `release/`（如 `release/mac-arm64/Mocker.app`），该目录已被 gitignore，不会提交。
-
-**首次打开未签名包：** Finder **右键 → 打开**，或：
-
-```bash
-xattr -dr com.apple.quarantine "release/mac-arm64/Mocker.app"
-```
-
-**配置目录：**
+## 配置放在哪里
 
 | 场景 | 路径 |
 |------|------|
-| 开发（仓库里 `npm start` / `node cli/mocker.js` / `npm run desktop` 源码） | 仓库内 `config/` |
-| 已安装的 `mocker` 命令，或打包后的 `.app`（可写） | `~/Library/Application Support/Mocker/config/` |
-| 打包后的 `.app`（只读种子） | `Contents/Resources/seed-config/`（首次启动拷贝到可写目录） |
-| 已安装的 `mocker` 命令（只读种子） | 安装包内的 `config/`（首次启动拷贝，不覆盖已有） |
-| 自定义配置目录 | 环境变量 `MOCK_CONFIG_DIR` |
-| 自定义种子目录 | 环境变量 `MOCK_SEED_CONFIG_DIR` |
+| 已安装的 `mocker`，或打包后的桌面应用 | `~/Library/Application Support/Mocker/config/` |
+| 在本仓库里直接运行 | 仓库内 `config/` |
+| 自定义 | 环境变量 `MOCK_CONFIG_DIR` |
 
-**首次启动种子：** 若可写配置目录中还没有 `projects.json`，会从种子目录复制默认项目（含 `routes.json`）。**已有配置绝不覆盖**，因此暂停/环境选择等状态会跨重启保留。
+Windows 对应 `%APPDATA%\Mocker\config`，Linux 使用 XDG 配置目录。Admin 默认是 `http://127.0.0.1:4000`，可用 `--admin`、`MOCKER_ADMIN_URL` 或 `ADMIN_PORT` 改。
 
-环境变量（可选）：`ADMIN_PORT`、`ADMIN_HOST`、`CORS_ORIGIN`、`MOCK_DELAY_MS`、`MOCK_CONFIG_DIR`、`MOCK_SEED_CONFIG_DIR`
+每人在自己的电脑上跑一份。配置和端口都在本机，不和其他人共享。
 
----
-
-## 架构
-
-```text
-HTTP 请求
-  → 动态 Mock 路由（场景 / match 条件）
-  → 可选代码 Router（默认无）
-  → 路径 proxy 规则 / 默认上游
-  → 404 miss
-```
-
-| 能力 | 说明 |
-|------|------|
-| 项目 | 新建、暂停/恢复（释放端口）、删除、重载；运行开关写入配置并跨重启保持 |
-| 环境 | 项目内多环境（测试/灰度/线上…），共享接口 Mock，切换 active 上游 Proxy |
-| 接口 | 一接口多场景；`match` 优先于「当前启用」场景 |
-| 响应模式 | 场景级 `mode`: `json`（默认）或 `sse` 流式 |
-| 日志 | 请求/响应详情；可保存为场景 |
-| Proxy | 默认上游 + 按 `pathPrefix` 的规则列表 |
-
-### 暂停
-
-暂停后**不监听端口**，配置与 `routes.json` 完整保留，随时恢复。`enabled: false` 会写入 `projects.json`，再次启动应用时仍为暂停。
-
----
-
-## 目录结构
-
-```text
-mocker/
-├── apps/
-│   ├── web/                 # Web 控制台（Vite + React + Ant Design）
-│   │   └── src/
-│   │       ├── components/  # MethodTag、ProjectStatusTag、KeyValueEditor
-│   │       ├── features/    # 按域拆分：shell / overview / routes / logs / projects
-│   │       ├── hooks/       # useProjects、useHashRoute
-│   │       └── utils/       # 错误提示、状态文案、curl、ids
-│   └── desktop/             # 桌面端 Electron 壳（模块化 bootstrap）
-│       ├── main.js          # 薄入口：接线 window / tray / lifecycle
-│       ├── paths-electron.js
-│       ├── window.js
-│       ├── tray.js
-│       ├── app-lifecycle.js
-│       └── preload.cjs
-├── server/                  # 后端 runtime + Admin API + Mock 引擎
-│   ├── server.js            # CLI / Web 入口
-│   ├── runtime.js           # 共享启动（Web + Desktop）
-│   ├── admin/               # 管理 API + 静态控制台
-│   ├── core/
-│   │   ├── util/            # headers / ids / http-error
-│   │   ├── config/          # model（归一化校验）+ store（持久化）
-│   │   ├── project/         # views 等项目视图构建
-│   │   ├── config-seed.js
-│   │   ├── project-manager.js
-│   │   └── …                # routes、proxy、match、paths
-│   └── lib/                 # http / sse 纯工具
-├── public/console/          # Web 构建产物（gitignore，由 npm run build 生成）
-├── config/                  # 项目元数据与 routes（开发时；打包后作 seed）
-├── scripts/
-└── package.json             # 根脚本：双入口编排
-```
-
-### `server/core` 模块
-
-| 路径 | 职责 |
-|------|------|
-| `util/headers.js` | `normalizeHeaderMap` / `flattenHeaders`（proxy 与配置共用） |
-| `util/ids.js` | `SLUG_RE` / `ENV_ID_RE` 与校验 |
-| `util/http-error.js` | `createHttpError(status, message)` 统一 HTTP 错误 |
-| `config/model.js` | 配置归一化、多环境、`resolveEffectiveProxy`、校验 |
-| `config/store.js` | `projects.json` 读写持久化 |
-| `config-store.js` | 对 `config/model` + `config/store` 的 re-export 门面 |
-| `config-seed.js` | 首次启动从种子目录拷贝默认配置（不覆盖已有） |
-| `project/views.js` | 管理 API 用的项目视图构建 |
-| `project-manager.js` | 项目生命周期、路由 CRUD、日志、环境切换 |
-| `route-store.js` | `routes.json` 规范化 / 迁移 |
-| `paths.js` | 包根路径 / 配置目录 / 种子目录 / 控制台静态目录 |
-| `match.js` | 场景匹配、proxy 规则、日志截断 |
-| `dynamic-routes.js` | 请求命中 Mock 场景 |
-| `proxy.js` | 上游转发回落（含环境/路由级额外 headers） |
-| `request-log.js` | 内存请求日志 |
-| `create-project-app.js` | 单项目 Express 应用 |
-
-### `apps/desktop` 模块
-
-| 文件 | 职责 |
-|------|------|
-| `main.js` | 薄 bootstrap：配置路径、接线各控制器、启动 runtime |
-| `paths-electron.js` | 开发/打包路径与 `setPaths`（含 seed-config） |
-| `window.js` | `BrowserWindow` 创建、显示、关闭策略 |
-| `tray.js` | 菜单栏托盘与菜单（隐藏窗口、退出等） |
-| `app-lifecycle.js` | 单实例、activate、退出时 `stop()` 释放端口 |
-| `preload.cjs` | 预加载桥（如有） |
-
-### `apps/web` 功能分层（简要）
-
-| 区域 | 说明 |
-|------|------|
-| `features/shell` | 顶栏、侧栏项目列表、工作区布局、主题配置 |
-| `features/overview` | 项目信息、多环境面板、Proxy 规则、draft 校验 |
-| `features/routes` | 接口列表、场景抽屉、试请求、场景表单 helpers |
-| `features/logs` | 请求日志与保存为场景 |
-| `features/projects` | 新建项目弹窗 |
-| `components/` | 跨页复用：`MethodTag`、`ProjectStatusTag`、`KeyValueEditor` |
-| `utils/` | `showError`、项目状态文案、curl、`ENV_ID_RE` |
-
----
-
-## 控制台功能
-
-- 项目：新建、暂停/恢复、删除、重载、侧栏筛选
-- 环境：测试 / 灰度 / 线上等一键切换（共享 routes，仅切换上游）
-- 概览：名称/端口/当前环境 proxy/路径规则、运行开关
-- 接口 Mock：场景切换、match、requestExample、试请求、curl、导入导出
-- **SSE 流式**：场景 `mode: "sse"`，配置 `stream.events[]`
-- 请求日志：筛选、详情、curl、保存为场景
-- 实时通道：列出已登记的 WebSocket / RTC，可开关启用；协议未接入
-- 主题：浅色 / 深色（Web 与桌面共用同一套 UI）
-
-### SSE 场景示例（`routes.json`）
-
-```json
-{
-  "name": "聊天流",
-  "mode": "sse",
-  "statusCode": 200,
-  "delayMs": 0,
-  "stream": {
-    "events": [
-      { "data": { "delta": "你" }, "delayMs": 50 },
-      { "data": { "delta": "好" }, "delayMs": 50 }
-    ],
-    "endWithDone": true,
-    "keepAliveMs": 0
-  },
-  "headers": {},
-  "match": null
-}
-```
-
-本地验证：
+## 从源码开发
 
 ```bash
-curl -N -X POST 'http://127.0.0.1:<port>/path' \
-  -H 'Accept: text/event-stream' \
-  -H 'Content-Type: application/json' \
-  -d '{}'
+npm install
+npm run dev
 ```
 
-开发时 API 由 Vite 代理到 `:4000`（见 `apps/web/vite.config.ts`）。
+| 入口 | 地址或命令 |
+|------|------------|
+| Web 控制台（开发） | http://localhost:5173 |
+| Web 控制台（生产） | http://localhost:4000，先执行 `npm run build` |
+| 桌面端 | `npm run desktop` |
+| macOS 安装包 | `npm run dist:mac`，产物在 `release/`，当前为未签名 arm64 |
 
----
+点击桌面窗口的关闭按钮会退出应用并释放全部 Mock 端口。要在后台继续提供 Mock，用菜单栏里的「隐藏窗口（后台保持 Mock）」。
 
-## 脚本
+## 维护者：发布到 npm
 
-| 命令 | 说明 |
-|------|------|
-| `npm run dev` | Web：后端 + 控制台 HMR |
-| `npm run dev:server` | 仅 Express |
-| `npm run dev:web` | 仅 Vite 控制台 |
-| `npm run dev:desktop` | 桌面开发：Vite + Electron |
-| `npm run build` | 构建 Web 控制台到 `public/console/` |
-| `npm start` | 生产 Web：服务端 + 已构建控制台 |
-| `npm run desktop` | 构建后启动 Electron |
-| `npm run desktop:only` | 不重建，直接 Electron |
-| `npm run dist:dir` | 打包 macOS `.app` |
-| `npm run dist:mac` | 打包 `.app` + `.dmg` + `.zip` |
+npm 上无 scope 的包名 `mocker` 已被占用。发布前把 `package.json` 的 `name` 改成 `@你的npm用户名/mocker`，并删掉 `"private": true`。同时把本文件「安装」一节里的包名换成同一个名字。`bin` 保持 `"mocker": "./cli/mocker.js"`，用户安装后的命令名不变。
 
----
-
-## 配置文件
-
-### `config/projects.json`
-
-```json
-{
-  "adminPort": 4000,
-  "projects": {
-    "demo": {
-      "name": "Demo",
-      "description": "",
-      "enabled": true,
-      "port": 4001,
-      "activeEnvironment": "test",
-      "environments": {
-        "test": {
-          "name": "测试",
-          "proxy": {
-            "enabled": true,
-            "target": "https://test.example.com",
-            "rules": []
-          }
-        },
-        "gray": {
-          "name": "灰度",
-          "proxy": {
-            "enabled": true,
-            "target": "https://gray.example.com"
-          }
-        },
-        "prod": {
-          "name": "线上",
-          "proxy": {
-            "enabled": true,
-            "target": "https://api.example.com"
-          }
-        }
-      },
-      "managed": true
-    }
-  }
-}
+```bash
+npm run build
+npm login
+npm publish --access public
 ```
 
-- `activeEnvironment`：当前生效的环境 id；接口 Mock（`routes.json`）在环境间共享。
-- `environments.*.proxy`：该环境下未命中 Mock 时的上游；控制台可一键切换。
-- 旧配置若只有顶层 `proxy`，启动时会自动迁移为 `environments.default`。
-- `enabled: false` 表示项目暂停（不监听端口），会持久化。
+scoped 包默认按私有包发布，免费账号需要 `--access public`。对方安装：
 
-### `config/projects/<slug>/routes.json`
+```bash
+npm install -g @你的npm用户名/mocker
+```
 
-`version: 2`，每条接口含多 `scenarios`（含可选 `mode` / `stream` / `match`）。
+发到自己的 registry 时，包名可以仍叫 `mocker`（该仓库里没人占用的话）：
 
----
+```bash
+npm login --registry=https://你的仓库地址
+npm publish --registry=https://你的仓库地址
+```
+
+对方：
+
+```bash
+npm install -g mocker --registry=https://你的仓库地址
+```
+
+每次更新先改 `version`，再重新 `npm run build` 和 `npm publish`。同一版本不能重复发布。`npm publish` 打包的是当前目录里的文件，包含尚未提交的改动，也包含 `npm run build` 生成的 `public/console/`。
 
 ## License
 

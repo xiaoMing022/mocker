@@ -1,0 +1,50 @@
+{
+  "version": 2,
+  "routes": [
+    {
+      "id": "demo-orders",
+      "name": "订单列表",
+      "method": "GET",
+      "path": "/api/orders",
+      "enabled": true,
+      "activeScenarioId": "demo-orders-ok",
+      "note": "模板接口。按自己的前端请求替换 method、path 和 response。",
+      "requestExample": null,
+      "scenarios": [
+        {
+          "id": "demo-orders-ok",
+          "name": "ok",
+          "origin": "spec",
+          "statusCode": 200,
+          "delayMs": 0,
+          "mode": "json",
+          "response": {
+            "list": [
+              {
+                "id": "1",
+                "title": "示例订单"
+              }
+            ]
+          },
+          "headers": {},
+          "match": null,
+          "stream": null
+        },
+        {
+          "id": "demo-orders-empty",
+          "name": "empty",
+          "origin": "spec",
+          "statusCode": 200,
+          "delayMs": 0,
+          "mode": "json",
+          "response": {
+            "list": []
+          },
+          "headers": {},
+          "match": null,
+          "stream": null
+        }
+      ]
+    }
+  ]
+}
