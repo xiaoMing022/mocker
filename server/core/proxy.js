@@ -3,6 +3,7 @@ import { createProxyMiddleware } from "http-proxy-middleware"
 import { isProxyActive, isValidHttpUrl } from "./config-store.js"
 import { applyCorsHeaders } from "./cors.js"
 import { resolveProxyTarget } from "./match.js"
+import { findMatchingRoute } from "./path-template.js"
 import { flattenHeaders, normalizeHeaderMap } from "./util/headers.js"
 
 export { flattenHeaders, normalizeHeaderMap }
@@ -112,11 +113,7 @@ export function resolveProxyExtraHeaders(opts) {
   const method = String(opts.method || "GET").toUpperCase()
   const reqPath = opts.path || "/"
   const routes = opts.routes || []
-  const hit = routes.find(
-    (r) =>
-      String(r.method || "").toUpperCase() === method &&
-      String(r.path || "") === reqPath,
-  )
+  const hit = findMatchingRoute(routes, method, reqPath, { includeDisabled: true })
   if (hit?.proxyHeaders) {
     Object.assign(extra, normalizeHeaderMap(hit.proxyHeaders))
   }

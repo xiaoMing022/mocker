@@ -52,6 +52,7 @@ export function createProjectApp({ project, runtime, getRoutes, onRequestLog }) 
       onRequestLog({
         method: req.method,
         path: req.originalUrl?.split("?")[0] || req.path,
+        routePath: res.locals.mockRoutePath || null,
         query: Object.keys(query).length ? query : null,
         requestHeaders: pickLogHeaders(req.headers),
         requestBody:

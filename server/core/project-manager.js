@@ -1,3 +1,5 @@
+import path from "node:path"
+
 import express from "express"
 
 import {
@@ -10,6 +12,8 @@ import {
   validateCreateProject,
   validateProjectPatch,
 } from "./config-store.js"
+import { listenOn, resolveListenHost } from "./listen-host.js"
+import { getConfigRoot } from "./paths.js"
 import { mergeSpecChannels, mergeSpecRoutes, parseApplyDocument } from "./apply-spec.js"
 import { attachChannels } from "./channels/attach.js"
 import {
@@ -38,10 +42,12 @@ import { createHttpError } from "./util/http-error.js"
  *     description?: string,
  *     defaultPort?: number,
  *     createRouter: () => import("express").Router
- *   }>
+ *   }>,
+ *   listenHost?: string
  * }} options
  */
-export function createProjectManager({ codeProjects }) {
+export function createProjectManager({ codeProjects, listenHost }) {
+  const bindHost = listenHost !== undefined ? listenHost : resolveListenHost()
   /** @type {import("./config-store.js").AppConfig} */
   let config = loadConfig(codeProjects)
 
@@ -51,7 +57,10 @@ export function createProjectManager({ codeProjects }) {
   /** @type {Map<string, import("./channel-store.js").Channel[]>} */
   const channelsBySlug = new Map()
 
-  const requestLogs = createRequestLogStore({ maxPerProject: 200 })
+  const requestLogs = createRequestLogStore({
+    maxPerProject: 200,
+    fileForSlug: (slug) => path.join(getConfigRoot(), "projects", slug, "request-logs.json"),
+  })
 
   /** @type {Map<string, { server: import("node:http").Server | null, status: string, lastError: string | null, warning: string | null }>} */
   const runtime = new Map()
@@ -261,18 +270,12 @@ export function createProjectManager({ codeProjects }) {
    * @param {number} port
    * @returns {Promise<import("node:http").Server>}
    */
+  /**
+   * @param {import("express").Express} app
+   * @param {number} port
+   */
   function listenOnce(app, port) {
-    return new Promise((resolve, reject) => {
-      const server = app.listen(port, () => resolve(server))
-      server.once("error", (error) => {
-        try {
-          server.close()
-        } catch {
-          /* ignore */
-        }
-        reject(error)
-      })
-    })
+    return listenOn(app, port, bindHost)
   }
 
   async function startProjectUnlocked(slug) {
@@ -699,7 +702,7 @@ export function createProjectManager({ codeProjects }) {
     }
 
     const method = String(log.method || "GET").toUpperCase()
-    const path = String(log.path || "/")
+    const path = String(log.routePath || log.path || "/")
     const scenarioName =
       opts.name ||
       `从日志 ${log.id}${log.status != null ? ` · ${log.status}` : ""}`

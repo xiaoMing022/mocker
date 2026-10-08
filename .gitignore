@@ -23,6 +23,7 @@ Desktop.ini
 .cache/
 config/projects.json.tmp
 config/projects/**/*.tmp
+config/projects/**/request-logs.json
 
 # Web console build output (run `npm run build`)
 apps/web/dist/

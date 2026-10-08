@@ -116,6 +116,8 @@ export type Scenario = {
   pagination?: PaginationConfig | null
   /** spec scenarios are owned by `mocker apply`; console scenarios are local adjustments */
   origin?: "spec" | "console"
+  /** Lowercase labels used to filter and switch scenarios. Not a second name. */
+  tags?: string[]
 }
 
 export type Route = {
@@ -156,6 +158,8 @@ export type RequestLog = {
   ts: string
   method: string
   path: string
+  /** Matched route template, such as /api/orders/:id, when the request path differs. */
+  routePath?: string | null
   query?: Record<string, string> | null
   requestHeaders?: Record<string, string> | null
   requestBody?: unknown

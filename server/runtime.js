@@ -1,6 +1,7 @@
 import { createAdminApp } from "./admin/app.js"
 import { ensureConfigSeeded } from "./core/config-seed.js"
 import { resolveAdminPort } from "./core/config-store.js"
+import { listenOn, resolveListenHost } from "./core/listen-host.js"
 import { createProjectManager } from "./core/project-manager.js"
 import { projects as codeProjects } from "./projects/index.js"
 
@@ -22,26 +23,23 @@ import { projects as codeProjects } from "./projects/index.js"
  *   codeProjects?: typeof codeProjects,
  *   host?: string,
  *   onAdminListening?: (info: { port: number, url: string }) => void
- * }} [options] `host` binds admin only; omit for Node default (all interfaces).
+ * }} [options] `host` binds admin and project ports. Omit for loopback, or set ADMIN_HOST.
  * @returns {Promise<MockRuntime>}
  */
 export async function startMockRuntime(options = {}) {
-  const host =
-    options.host !== undefined
-      ? options.host
-      : process.env.ADMIN_HOST || undefined
+  const host = resolveListenHost(options.host)
   const projects = options.codeProjects || codeProjects
 
   ensureConfigSeeded()
 
-  const manager = createProjectManager({ codeProjects: projects })
+  const manager = createProjectManager({ codeProjects: projects, listenHost: host })
   await manager.startAll()
 
   const config = manager.getConfig()
   const adminPort = resolveAdminPort(config)
   const adminApp = createAdminApp({ manager })
 
-  const adminServer = await listen(adminApp, adminPort, host)
+  const adminServer = await listenOn(adminApp, adminPort, host)
   // Always give a loopback URL for opening the console locally.
   const adminUrl = `http://127.0.0.1:${adminPort}`
 
@@ -67,23 +65,6 @@ export async function startMockRuntime(options = {}) {
     adminServer,
     stop,
   }
-}
-
-/**
- * @param {import("express").Express} app
- * @param {number} port
- * @param {string | undefined} host
- * @returns {Promise<import("node:http").Server>}
- */
-function listen(app, port, host) {
-  return new Promise((resolve, reject) => {
-    const onListen = () => resolve(server)
-    const server =
-      host !== undefined && host !== ""
-        ? app.listen(port, host, onListen)
-        : app.listen(port, onListen)
-    server.once("error", reject)
-  })
 }
 
 /**

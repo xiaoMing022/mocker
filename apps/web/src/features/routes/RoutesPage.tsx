@@ -100,7 +100,7 @@ export function RoutesPage({ project, onChanged }: Props) {
           value={row.activeScenarioId}
           options={(row.scenarios || []).map((s) => ({
             value: s.id,
-            label: `${s.name}${s.origin === "spec" ? " · 基准" : ""} · ${s.mode === "sse" ? "SSE · " : ""}${s.statusCode}`,
+            label: `${s.name}${s.origin === "spec" ? " · 基准" : ""}${s.tags?.length ? ` · ${s.tags.join(",")}` : ""} · ${s.mode === "sse" ? "SSE · " : ""}${s.statusCode}`,
           }))}
           onChange={async (scenarioId) => {
             try {

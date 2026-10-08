@@ -499,7 +499,7 @@ export function RouteEditorDrawer({
           key: s.id,
           label: `${s.name}${s.id === activeScenarioId ? " ★" : ""}${
             s.origin === "spec" ? " · 基准" : ""
-          }${s.mode === "sse" ? " · SSE" : ""}${s.match ? " · match" : ""}`,
+          }${s.tags?.length ? ` · ${s.tags.join(",")}` : ""}${s.mode === "sse" ? " · SSE" : ""}${s.match ? " · match" : ""}`,
           children: null,
         }))}
       />

@@ -6,6 +6,7 @@
  * @param {Array<{
  *   method: string,
  *   path: string,
+ *   routePath?: string | null,
  *   source?: string,
  *   status?: number | null,
  *   scenarioName?: string | null,
@@ -19,7 +20,8 @@ export function logsToDocument(project, logs) {
   const newest = new Map()
   for (const log of logs) {
     if (!log?.method || !log?.path) continue
-    const key = `${String(log.method).toUpperCase()} ${log.path}`
+    const identity = log.routePath || log.path
+    const key = `${String(log.method).toUpperCase()} ${identity}`
     if (!newest.has(key)) newest.set(key, log)
   }
 
@@ -29,7 +31,7 @@ export function logsToDocument(project, logs) {
     /** @type {Record<string, unknown>} */
     const route = {
       method: String(log.method).toUpperCase(),
-      path: log.path,
+      path: log.routePath || log.path,
       scenarios: [
         {
           name: !miss && log.scenarioName ? String(log.scenarioName) : "captured",

@@ -12,7 +12,7 @@ const webPackage = path.join(root, "apps/web/package.json")
 if (!existsSync(webPackage)) {
   const installed = installSkills({ home: os.homedir() })
   console.log("\nMocker skill installed for agents:")
-  for (const file of installed) console.log(`  ${file}`)
+  for (const item of installed) console.log(`  ${item.agent}: ${item.path}`)
   console.log("Run `mocker skills install` again if you want to refresh it.\n")
   process.exit(0)
 }

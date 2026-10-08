@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmdirSync, rmSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -7,15 +7,33 @@ import { fail, ok } from "./output.js"
 const skillsRoot = fileURLToPath(new URL("../skills/", import.meta.url))
 
 /**
- * Directories other agents scan for user-level skills.
- * Grok reads ~/.grok/skills. Several other agents read ~/.agents/skills.
+ * User-level skill directories for mainstream agents.
+ * One skill name is copied into each directory, so an agent that scans
+ * several of these still sees a single mocker skill.
+ * Paths follow the Agent Skills layout used by each product.
+ * @type {{ agent: string, segments: string[] }[]}
+ */
+export const MAINSTREAM_AGENT_SKILL_DIRS = [
+  { agent: "grok", segments: [".grok", "skills"] },
+  { agent: "agents", segments: [".agents", "skills"] },
+  { agent: "claude-code", segments: [".claude", "skills"] },
+  { agent: "cursor", segments: [".cursor", "skills"] },
+  { agent: "codex", segments: [".codex", "skills"] },
+  { agent: "gemini-cli", segments: [".gemini", "skills"] },
+  { agent: "github-copilot", segments: [".copilot", "skills"] },
+  { agent: "windsurf", segments: [".codeium", "windsurf", "skills"] },
+  { agent: "opencode", segments: [".config", "opencode", "skills"] },
+]
+
+/**
  * @param {string} home
+ * @returns {{ agent: string, dir: string }[]}
  */
 export function skillInstallDirs(home) {
-  return [
-    path.join(home, ".grok", "skills"),
-    path.join(home, ".agents", "skills"),
-  ]
+  return MAINSTREAM_AGENT_SKILL_DIRS.map((item) => ({
+    agent: item.agent,
+    dir: path.join(home, ...item.segments),
+  }))
 }
 
 /**
@@ -86,15 +104,15 @@ export function readSkillFile(name = "mocker", root = skillsRoot) {
  */
 export function installSkills({ home, root = skillsRoot }) {
   const skills = listSkillRecords(root)
-  /** @type {string[]} */
+  /** @type {{ agent: string, path: string }[]} */
   const installed = []
   for (const skill of skills) {
-    for (const dir of skillInstallDirs(home)) {
-      const destDir = path.join(dir, skill.name)
+    for (const target of skillInstallDirs(home)) {
+      const destDir = path.join(target.dir, skill.name)
       mkdirSync(destDir, { recursive: true })
       const dest = path.join(destDir, "SKILL.md")
       cpSync(skill.file, dest)
-      installed.push(dest)
+      installed.push({ agent: target.agent, path: dest })
     }
   }
   return installed
@@ -124,4 +142,44 @@ export function printSkillRead(name) {
 export function printSkillInstall(home) {
   const installed = installSkills({ home })
   ok({ ok: true, installed })
+}
+
+/**
+ * Remove the copied skill from each agent directory.
+ * The mocker directory is removed only when it is empty afterwards.
+ * Other files in that directory are left in place.
+ * @param {{ home: string, root?: string }} input
+ */
+export function uninstallSkills({ home, root = skillsRoot }) {
+  const skills = listSkillRecords(root)
+  /** @type {{ agent: string, path: string, directoryRemoved: boolean }[]} */
+  const removed = []
+  /** @type {{ agent: string, path: string }[]} */
+  const absent = []
+  for (const skill of skills) {
+    for (const target of skillInstallDirs(home)) {
+      const destDir = path.join(target.dir, skill.name)
+      const dest = path.join(destDir, "SKILL.md")
+      if (!existsSync(dest)) {
+        absent.push({ agent: target.agent, path: dest })
+        continue
+      }
+      rmSync(dest)
+      let directoryRemoved = false
+      if (existsSync(destDir) && readdirSync(destDir).length === 0) {
+        rmdirSync(destDir)
+        directoryRemoved = true
+      }
+      removed.push({ agent: target.agent, path: dest, directoryRemoved })
+    }
+  }
+  return { removed, absent }
+}
+
+/**
+ * @param {string} home
+ */
+export function printSkillUninstall(home) {
+  const { removed, absent } = uninstallSkills({ home })
+  ok({ ok: true, removed, absent })
 }

@@ -1,5 +1,6 @@
 import { normalizeChannel } from "./channel-store.js"
-import { normalizeRoute, normalizeScenario } from "./route-store.js"
+import { patternKey, validateRoutePath } from "./path-template.js"
+import { normalizeRoute, normalizeScenario, readDocumentTags } from "./route-store.js"
 
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
 const SCENARIO_MODES = new Set(["json", "sse"])
@@ -36,6 +37,8 @@ export function parseApplyDocument(body) {
       routes = []
       /** @type {Set<string>} */
       const routeKeys = new Set()
+      /** @type {Map<string, string>} */
+      const shapes = new Map()
       for (let i = 0; i < body.routes.length; i += 1) {
         const parsed = parseSpecRoute(body.routes[i], i, errors)
         if (!parsed) continue
@@ -44,7 +47,14 @@ export function parseApplyDocument(body) {
           errors.push(`duplicate interface in document: ${key}`)
           continue
         }
+        const shape = patternKey(parsed.method, parsed.path)
+        const previous = shapes.get(shape)
+        if (previous) {
+          errors.push(`routes overlap: ${previous} and ${key}`)
+          continue
+        }
         routeKeys.add(key)
+        shapes.set(shape, key)
         routes.push(parsed)
       }
     }
@@ -88,8 +98,13 @@ function parseSpecRoute(raw, index, errors) {
   rejectKeys(raw, ["id", "origin", "enabled", "activeScenarioId"], `routes[${index}]`, errors)
   const method = String(raw.method || "").toUpperCase()
   const routePath = typeof raw.path === "string" ? raw.path.trim() : ""
-  if (!METHODS.has(method) || !routePath.startsWith("/")) {
+  if (!METHODS.has(method)) {
     errors.push(`routes[${index}] needs method and a path starting with /`)
+    return null
+  }
+  const pathError = validateRoutePath(routePath)
+  if (pathError) {
+    errors.push(`routes[${index}] ${pathError}`)
     return null
   }
   if (!Array.isArray(raw.scenarios) || raw.scenarios.length === 0) {
@@ -141,6 +156,15 @@ function parseSpecRoute(raw, index, errors) {
       "pagination",
     ]) {
       if (Object.prototype.hasOwnProperty.call(item, key)) scenario[key] = item[key]
+    }
+    if (Object.prototype.hasOwnProperty.call(item, "tags")) {
+      const parsedTags = readDocumentTags(item.tags)
+      if (!parsedTags.ok) {
+        errors.push(`${where}.${parsedTags.error}`)
+        scenarioOk = false
+        continue
+      }
+      scenario.tags = parsedTags.tags
     }
     scenarios.push(scenario)
   }
@@ -300,13 +324,16 @@ function mergeExistingRoute(current, spec, key, specScenariosRemoved) {
       continue
     }
     seen.add(scenario.name)
-    scenarios.push(
-      normalizeScenario({
-        ...incoming,
-        id: scenario.id,
-        origin: "spec",
-      }),
-    )
+    /** @type {Record<string, unknown>} */
+    const nextInput = {
+      ...incoming,
+      id: scenario.id,
+      origin: "spec",
+    }
+    if (!Object.prototype.hasOwnProperty.call(incoming, "tags")) {
+      nextInput.tags = scenario.tags
+    }
+    scenarios.push(normalizeScenario(nextInput))
   }
 
   for (const scenario of spec.scenarios) {

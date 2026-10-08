@@ -2,6 +2,7 @@ import { sendJson } from "../lib/http.js"
 import { sendSse } from "../lib/sse.js"
 import { hasMatchRules, pickScenario, scenarioMatches } from "./match.js"
 import { applyPagination, mergePagination } from "./pagination.js"
+import { findMatchingRoute } from "./path-template.js"
 
 /**
  * @param {{
@@ -14,9 +15,7 @@ export function createDynamicRoutesMiddleware({ getRoutes }) {
     const reqPath = req.path
 
     const routes = getRoutes()
-    const hit = routes.find(
-      (r) => r.enabled && r.method === method && r.path === reqPath,
-    )
+    const hit = findMatchingRoute(routes, method, reqPath)
 
     if (!hit) {
       next()
@@ -56,6 +55,7 @@ export function createDynamicRoutesMiddleware({ getRoutes }) {
 
     res.locals.mockSource = "dynamic"
     res.locals.mockRouteId = hit.id
+    res.locals.mockRoutePath = hit.path
     res.locals.mockScenarioId = scenario.id
     res.locals.mockScenarioName = scenario.name
     res.locals.mockScenarioOrigin = scenario.origin === "spec" ? "spec" : "console"

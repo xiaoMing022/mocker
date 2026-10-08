@@ -19,6 +19,7 @@
     "public/console/**",
     "config/**",
     "scripts/postinstall.mjs",
+    "scripts/preuninstall.mjs",
     "README.md"
   ],
   "scripts": {
@@ -32,6 +33,7 @@
     "mocker": "node cli/mocker.js",
     "pack:cli": "npm run build && npm pack",
     "postinstall": "node scripts/postinstall.mjs",
+    "preuninstall": "node scripts/preuninstall.mjs",
     "start:web": "npm run build && node server/server.js",
     "desktop": "npm run build && electron .",
     "desktop:only": "electron .",

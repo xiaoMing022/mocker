@@ -104,7 +104,18 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
       title: "Path",
       dataIndex: "path",
       ellipsis: true,
-      render: (p: string) => <Typography.Text code>{p}</Typography.Text>,
+      render: (p: string, row) => (
+        <span>
+          <Typography.Text code>{p}</Typography.Text>
+          {row.routePath && row.routePath !== p ? (
+            <div>
+              <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                模板 {row.routePath}
+              </Typography.Text>
+            </div>
+          ) : null}
+        </span>
+      ),
     },
     {
       title: "Source",
@@ -277,6 +288,13 @@ export function LogsPage({ project, onRoutesMaybeChanged }: Props) {
                 {selected.scenarioOrigin === "spec" ? " · 基准" : ""}
                 {selected.matchedByCondition ? "（条件匹配）" : ""}
               </div>
+              {selected.routePath && selected.routePath !== selected.path && (
+                <div>
+                  <Typography.Text type="secondary">
+                    模板：{selected.routePath}
+                  </Typography.Text>
+                </div>
+              )}
               {selected.routeName && (
                 <Typography.Text type="secondary">
                   路由：{selected.routeName}

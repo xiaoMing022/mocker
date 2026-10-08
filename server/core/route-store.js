@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "
 import path from "node:path"
 import { randomUUID } from "node:crypto"
 
+import { patternKey, validateRoutePath } from "./path-template.js"
 import { getConfigRoot } from "./paths.js"
 import { normalizeHeaderMap } from "./util/headers.js"
 import {
@@ -15,6 +16,53 @@ function projectsConfigDir() {
 }
 
 const METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE"])
+const TAG_RE = /^[a-z0-9][a-z0-9_-]{0,31}$/
+const MAX_TAGS = 8
+
+/**
+ * Stored tags. Invalid entries are dropped. Missing input is an empty list.
+ * @param {unknown} raw
+ * @returns {string[]}
+ */
+export function normalizeTags(raw) {
+  if (!Array.isArray(raw)) return []
+  /** @type {string[]} */
+  const tags = []
+  /** @type {Set<string>} */
+  const seen = new Set()
+  for (const item of raw) {
+    if (typeof item !== "string") continue
+    const tag = item.trim().toLowerCase()
+    if (!TAG_RE.test(tag) || seen.has(tag)) continue
+    seen.add(tag)
+    tags.push(tag)
+    if (tags.length >= MAX_TAGS) break
+  }
+  return tags
+}
+
+/**
+ * Tags written in an apply document. A bad entry is an error.
+ * @param {unknown} raw
+ * @returns {{ ok: true, tags: string[] } | { ok: false, error: string }}
+ */
+export function readDocumentTags(raw) {
+  if (!Array.isArray(raw)) return { ok: false, error: "tags must be an array of strings" }
+  if (raw.length > MAX_TAGS) return { ok: false, error: "tags has more than 8 items" }
+  /** @type {string[]} */
+  const tags = []
+  /** @type {Set<string>} */
+  const seen = new Set()
+  for (const item of raw) {
+    if (typeof item !== "string") return { ok: false, error: "tags must be an array of strings" }
+    const tag = item.trim().toLowerCase()
+    if (!TAG_RE.test(tag)) return { ok: false, error: `invalid tag ${JSON.stringify(item)}` }
+    if (seen.has(tag)) continue
+    seen.add(tag)
+    tags.push(tag)
+  }
+  return { ok: true, tags }
+}
 
 /** @param {unknown} value */
 function normalizeOrigin(value) {
@@ -55,6 +103,7 @@ function normalizeOrigin(value) {
  *   mode: "json" | "sse",
  *   stream: ScenarioStream | null,
  *   pagination: PaginationConfig | null,
+ *   tags: string[],
  *   origin: "spec" | "console"
  * }} Scenario
  *
@@ -278,6 +327,7 @@ export function normalizeScenario(input) {
     mode,
     stream,
     pagination: normalizePagination(input.pagination),
+    tags: normalizeTags(input.tags),
     origin: normalizeOrigin(input.origin),
   }
 }
@@ -499,12 +549,20 @@ export function validateRoutesPayload(routesInput) {
   const routes = []
   /** @type {Map<string, string>} */
   const keys = new Map()
+  /** @type {Map<string, string>} */
+  const shapes = new Map()
 
   for (let i = 0; i < routesInput.length; i += 1) {
     const raw = routesInput[i]
     const route = normalizeRoute(raw)
     if (!route) {
       errors.push(`routes[${i}] is invalid (method/path/scenarios)`)
+      continue
+    }
+
+    const pathError = validateRoutePath(route.path)
+    if (pathError) {
+      errors.push(`routes[${i}] ${pathError}`)
       continue
     }
 
@@ -518,7 +576,14 @@ export function validateRoutesPayload(routesInput) {
       errors.push(`duplicate interface: ${key} (one entry per method+path)`)
       continue
     }
+    const shape = patternKey(route.method, route.path)
+    const previous = shapes.get(shape)
+    if (previous) {
+      errors.push(`routes[${i}] overlaps ${previous} (${key})`)
+      continue
+    }
     keys.set(key, route.id)
+    shapes.set(shape, key)
 
     const scenarioIds = new Set()
     for (const s of route.scenarios) {

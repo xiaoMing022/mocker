@@ -26,7 +26,7 @@ mocker start
 
 `mocker start` 会启动服务并打开 Web 控制台。服务已经在跑时，它只打开浏览器然后退出。
 
-全局安装会把 agent skill 拷到 `~/.grok/skills/mocker` 和 `~/.agents/skills/mocker`。仓库里执行 `npm install` 不会写这两个目录。需要重装 skill 时执行 `mocker skills install`。
+全局安装会把同一份 skill 拷进 Grok、Claude Code、Cursor、Codex、Gemini CLI、GitHub Copilot、Windsurf、OpenCode，以及 `~/.agents/skills`。仓库里执行 `npm install` 不会写这些目录。需要重装时执行 `mocker skills install`；卸掉这些拷贝用 `mocker skills uninstall`，这不删除 mock 项目配置。
 
 还没发布、或想从源码安装时：
 
@@ -49,7 +49,7 @@ mocker start
 mocker status
 ```
 
-`status` 里能看到每个项目的 `port` 和 `url`。把前端的 API 地址指到该项目的 `url`。
+`status` 里能看到每个项目的 `port` 和 `url`。把前端的 API 地址指到该项目的 `url`。查一个项目的环境用 `mocker project get --project <slug>`，查当前场景用 `mocker route list --project <slug>`。
 
 换成自己的项目：
 

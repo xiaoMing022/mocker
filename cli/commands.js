@@ -2,7 +2,9 @@ import { writeFileSync } from "node:fs"
 
 import { activationTargets, selectScenario } from "./activate.js"
 import { logsToDocument } from "./capture.js"
-import { decodeScenarioName, judgeProbe } from "./check.js"
+import { decodeScenarioName, judgeProbe, probeRequest } from "./check.js"
+import { selectScenarioByTag } from "./inspect.js"
+import { probePathForTemplate } from "../server/core/path-template.js"
 import { fail, ok } from "./output.js"
 import { printSkillRead } from "./skills.js"
 
@@ -39,22 +41,47 @@ export async function status(admin) {
   ok(body)
 }
 
-export function printSchema() {
-  ok({
+export function applyDocumentSchema() {
+  return {
     command: "mocker apply --file <path> [--project <slug>] [--admin <url>]",
     document: {
       project: "project-slug",
       routes: [
         {
-          method: "POST",
-          path: "/api/example",
-          name: "示例",
+          method: "GET",
+          path: "/api/orders/:id",
+          name: "订单",
+          requestExample: { query: { verbose: "1" } },
+          pagination: {
+            enabled: true,
+            preset: "page-pageSize",
+            listPath: "list",
+            totalPath: "total",
+          },
           scenarios: [
             {
               name: "ok",
               statusCode: 200,
+              delayMs: 0,
               mode: "json",
-              response: { ok: true },
+              headers: { "X-Example": "1" },
+              match: {
+                query: { verbose: "1" },
+                headers: { "X-Role": "admin" },
+                body: { winner: "A" },
+              },
+              tags: ["ok"],
+              response: { id: "1", list: [], total: 0 },
+            },
+            {
+              name: "stream",
+              statusCode: 200,
+              mode: "sse",
+              stream: {
+                events: [{ event: "delta", data: { text: "hi" }, delayMs: 20 }],
+                endWithDone: true,
+                keepAliveMs: 0,
+              },
             },
           ],
         },
@@ -66,14 +93,28 @@ export function printSchema() {
     },
     rules: [
       "Put this file in the user project. mocker apply posts it to the running admin.",
-      "Route identity is method + path. Scenario identity inside a spec route is name.",
+      "Route identity is method + path. A path may include :param segments. :name matches one path segment.",
+      "Static segments outrank parameters. /api/orders/export wins over /api/orders/:id. Overlapping templates are rejected.",
+      "Scenario identity inside a spec route is name. tags are lowercase labels, not a second name.",
+      "Apply updates tags on spec scenarios when the document includes tags. Omitted tags stay. Console scenario tags stay.",
       "Omit routes to leave HTTP mocks untouched. An empty routes array removes spec scenarios only.",
       "Omit channels to leave channel records untouched. An empty channels array removes spec channels.",
       "Apply updates origin spec scenarios and keeps console scenarios and the active scenario.",
       "Do not send id, origin, enabled, or activeScenarioId. mode is json or sse.",
+      "match is exact equality on headers, query, and dot-paths in the JSON body. The first matching conditional scenario wins.",
+      "pagination slices listPath. preset is page-pageSize, pageNum-pageSize, or offset-limit.",
+      "sse stream.events[] may set event, data, id, retry, and delayMs. endWithDone appends [DONE].",
+      "check requests each :param as the segment 1. /api/orders/:id is requested as /api/orders/1.",
+      "check sends requestExample query, and requestExample body on methods other than GET and HEAD.",
+      "check compares the JSON body with the hit spec scenario. Paginated routes use that same query and body. SSE is compared by status and scenario only.",
+      "A JSON body of {} passes only when the spec scenario response is {}.",
       "websocket requires bind.path. rtc bind is optional. Both are recorded as runtime unimplemented.",
     ],
-  })
+  }
+}
+
+export function printSchema() {
+  ok(applyDocumentSchema())
 }
 
 /**
@@ -163,7 +204,7 @@ export async function createProject({ admin, slug, name, port }) {
  * @param {string} path
  * @param {RequestInit} [init]
  */
-async function adminFetch(admin, path, init) {
+export async function adminFetch(admin, path, init) {
   try {
     return await fetch(`${admin}${path}`, init)
   } catch {
@@ -175,13 +216,15 @@ async function adminFetch(admin, path, init) {
 }
 
 /**
- * @param {{ admin: string, project?: string, source?: string, limit?: string }} input
+ * @param {{ admin: string, project?: string, source?: string, limit?: string, method?: string, path?: string }} input
  */
-export async function listLogs({ admin, project, source, limit }) {
+export async function listLogs({ admin, project, source, limit, method, path }) {
   const slug = requireProject(project)
   const params = new URLSearchParams()
   params.set("limit", limit && String(limit).trim() ? String(limit) : "50")
   if (source) params.set("source", source)
+  if (method) params.set("method", method)
+  if (path) params.set("path", path)
   const response = await adminFetch(admin, `/__mock/projects/${encodeURIComponent(slug)}/logs?${params}`)
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) fail({ ok: false, status: response.status, ...payload })
@@ -235,15 +278,38 @@ export async function checkDocument({ admin, project, document }) {
       results.push(judgeProbe(route, { status: null, origin: null, scenarioName: null, error: "path must start with /" }))
       continue
     }
-    const target = new URL(routePath, base.endsWith("/") ? base : `${base}/`)
+    const probed = probeRequest(route)
+    const target = new URL(
+      probePathForTemplate(routePath),
+      base.endsWith("/") ? base : `${base}/`,
+    )
+    for (const [key, value] of Object.entries(probed.query)) {
+      target.searchParams.set(key, value)
+    }
+    /** @type {RequestInit} */
+    const init = { method, redirect: "manual" }
+    if (probed.body !== undefined && method !== "GET" && method !== "HEAD") {
+      init.headers = { "Content-Type": "application/json" }
+      init.body = JSON.stringify(probed.body)
+    }
     try {
-      const response = await fetch(target, { method, redirect: "manual" })
+      const response = await fetch(target, init)
       const origin = response.headers.get("x-mock-scenario-origin")
       const scenarioName = decodeScenarioName(response.headers.get("x-mock-scenario-name"))
-      results.push(
-        judgeProbe(route, { status: response.status, origin, scenarioName }),
-      )
-      await response.arrayBuffer().catch(() => {})
+      const contentType = response.headers.get("content-type") || ""
+      /** @type {{ status: number, origin: string | null, scenarioName: string | null, body?: unknown, bodyError?: string }} */
+      const probe = { status: response.status, origin, scenarioName }
+      if (!contentType.includes("text/event-stream")) {
+        const text = await response.text()
+        try {
+          probe.body = text === "" ? null : JSON.parse(text)
+        } catch {
+          probe.bodyError = "response is not JSON"
+        }
+      } else {
+        await response.arrayBuffer().catch(() => {})
+      }
+      results.push(judgeProbe(route, probe))
     } catch (error) {
       results.push(
         judgeProbe(route, {
@@ -262,6 +328,22 @@ export async function checkDocument({ admin, project, document }) {
 }
 
 /**
+ * @param {Record<string, any>} route
+ * @param {string} tag
+ */
+function pickedScenario(route, tag) {
+  const picked = selectScenarioByTag(route, tag)
+  if (!picked.ok) {
+    fail({
+      ok: false,
+      message: `${picked.message} on ${route.method} ${route.path}`,
+      scenarios: picked.scenarios,
+    })
+  }
+  return picked.scenario
+}
+
+/**
  * Switch the active scenario. Does not edit scenario bodies.
  * @param {{
  *   admin: string,
@@ -269,15 +351,17 @@ export async function checkDocument({ admin, project, document }) {
  *   method?: string,
  *   path?: string,
  *   name?: string,
+ *   tag?: string,
  *   document?: { project?: string, routes?: unknown }
  * }} input
  */
-export async function activateScenarios({ admin, project, method, path: routePath, name, document }) {
-  /** @type {{ method: string, path: string, name: string }[]} */
+export async function activateScenarios({ admin, project, method, path: routePath, name, tag, document }) {
+  /** @type {{ method: string, path: string, name?: string, tag?: string }[]} */
   let targets
   /** @type {string} */
   let slug
   if (document) {
+    if (tag) fail({ ok: false, message: "mocker scenario activate --tag cannot be combined with --file" })
     slug =
       (project && project.trim()) ||
       (typeof document.project === "string" ? document.project.trim() : "")
@@ -289,13 +373,17 @@ export async function activateScenarios({ admin, project, method, path: routePat
     slug = requireProject(project)
     const verb = String(method || "").toUpperCase()
     const scenarioName = typeof name === "string" ? name.trim() : ""
-    if (!verb || !routePath || !scenarioName) {
+    const scenarioTag = typeof tag === "string" ? tag.trim().toLowerCase() : ""
+    if (scenarioName && scenarioTag) {
+      fail({ ok: false, message: "mocker scenario activate accepts --name or --tag, not both" })
+    }
+    if (!verb || !routePath || (!scenarioName && !scenarioTag)) {
       fail({
         ok: false,
-        message: "mocker scenario activate requires --method, --path, and --name, or --file",
+        message: "mocker scenario activate requires --method, --path, and --name or --tag, or --file",
       })
     }
-    targets = [{ method: verb, path: routePath, name: scenarioName }]
+    targets = [{ method: verb, path: routePath, name: scenarioName, tag: scenarioTag }]
   }
 
   const listed = await adminFetch(admin, `/__mock/projects/${encodeURIComponent(slug)}/routes`)
@@ -312,7 +400,9 @@ export async function activateScenarios({ admin, project, method, path: routePat
     if (!route) {
       fail({ ok: false, message: `Route not found: ${target.method} ${target.path}` })
     }
-    const scenario = selectScenario(route, target.name)
+    const scenario = target.tag
+      ? pickedScenario(route, target.tag)
+      : selectScenario(route, target.name || "")
     if (!scenario) {
       fail({
         ok: false,
@@ -338,6 +428,7 @@ export async function activateScenarios({ admin, project, method, path: routePat
       path: target.path,
       name: scenario.name,
       origin: scenario.origin === "spec" ? "spec" : "console",
+      tags: Array.isArray(scenario.tags) ? scenario.tags : [],
       previous: previous?.name || null,
     })
   }
@@ -347,7 +438,7 @@ export async function activateScenarios({ admin, project, method, path: routePat
 /**
  * @param {string | undefined} project
  */
-function requireProject(project) {
+export function requireProject(project) {
   const slug = typeof project === "string" ? project.trim() : ""
   if (!slug) fail({ ok: false, message: "Pass --project <slug>." })
   return slug
